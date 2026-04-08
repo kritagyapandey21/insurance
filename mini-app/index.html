@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="PocketShield Insurance - Telegram Mini App">
+    <title>PocketShield Insurance</title>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- Telegram WebApp SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
+    <!-- QR Code Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="css/styles.css?v=8">
+</head>
+<body>
+    <!-- Theme Toggle Button -->
+    <button id="themeToggle" class="theme-toggle" title="Toggle Dark Mode">
+        🌙
+    </button>
+
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="screen active">
+        <div class="loader">
+            <div class="spinner"></div>
+            <p>Initializing...</p>
+        </div>
+    </div>
+
+    <!-- Screen 1: Terms & Agreement -->
+    <div id="termsScreen" class="screen">
+        <canvas id="termsBackground" class="terms-bg-canvas"></canvas>
+        <div class="container">
+            <div class="screen-header">
+                <h1>Terms & Agreement</h1>
+                <p>Please read and accept our terms to continue</p>
+            </div>
+
+            <div class="terms-content">
+                <div class="terms-scroll">
+                    <h3>Insurance Terms & Conditions</h3>
+                    
+                    <p><strong>1. Coverage Limit</strong><br>
+                    PocketShield Insurance covers up to 40% of the initial deposit amount submitted to your trading account without bonus. The remaining 60% is not covered under this insurance policy.</p>
+                    
+                    <p><strong>2. Prohibited Activities</strong><br>
+                    Users must not engage in any illegal activities on the Pocket Option platform. Any involvement in illegal transactions will void the insurance coverage and all associated claims.</p>
+                    
+                    <p><strong>3. Claim Eligibility - Total Loss Requirement</strong><br>
+                    Insurance claims can only be filed when you experience a total loss of your initial deposit amount. If you have already made a withdrawal from your trading account, you are no longer eligible to claim insurance, even if you subsequently lose your remaining funds.</p>
+                    
+                    <p><strong>4. Insurance Termination on Withdrawal</strong><br>
+                    Your insurance coverage will automatically end as soon as you make your first withdrawal from your trading account. No claims can be submitted after this point.</p>
+                    
+                    <p><strong>5. Account Suspension & Ineligibility</strong><br>
+                    If your Pocket Option account is blocked or suspended due to violation of platform rules and regulations, you will not be eligible to claim insurance. Full compliance with platform rules is mandatory throughout the policy period.</p>
+                    
+                    <p><strong>6. Pocket Option Platform Compliance</strong><br>
+                    You agree to follow all rules, regulations, and terms of service set by the Pocket Option platform. Failure to comply will result in insurance coverage being void.</p>
+                    
+                    <p><strong>7. Premium Payment Requirements</strong><br>
+                    You must pay the exact 10% insurance premium to activate and maintain your insurance coverage. Partial or incorrect premium payments will not activate your policy.</p>
+                    
+                    <p><strong>8. Payment Address Responsibility</strong><br>
+                    PocketShield is not responsible for payments sent to incorrect wallet addresses. You are solely responsible for verifying the correct payment address and amount. We recommend using the QR code provided for accuracy and ease of payment.</p>
+                    
+                    <p><strong>9. Payment Verification</strong><br>
+                    After completing your payment, you must provide the transaction hash (receipt) for verification. Your insurance coverage will only be activated after successful verification of your payment on the blockchain.</p>
+                    
+                    <p><strong>10. No Refunds</strong><br>
+                    All premium payments are non-refundable. Once paid, the 10% insurance premium cannot be returned under any circumstances.</p>
+                    
+                    <p><strong>11. Policy Validity Period</strong><br>
+                    Insurance coverage is valid for 3 months from the date of payment verification. After 3 months, the coverage will automatically expire. You will need to renew your policy separately for continued coverage.</p>
+                    
+                    <p><strong>12. Minimum Deposit & Account Registration Requirement</strong><br>
+                    To be eligible for PocketShield Insurance coverage, you must maintain a minimum initial deposit of $100 USD on your Pocket Option trading account. Additionally, your Pocket Option account must be created and registered exclusively through the official referral link provided in the insurance enrollment message. Failure to meet these two conditions—maintaining the $100 USD minimum deposit AND registering through the provided link—will disqualify you from claiming insurance benefits. Any deposits below $100 USD or accounts created outside of the designated registration link are not eligible for insurance coverage under any circumstances.</p>
+                </div>
+            </div>
+
+            <div class="terms-checkbox">
+                <input type="checkbox" id="agreeCheckbox">
+                <label for="agreeCheckbox">I agree to the Terms & Conditions</label>
+            </div>
+
+            <button id="continueBtn" class="btn btn-primary disabled" disabled>
+                Continue
+            </button>
+        </div>
+    </div>
+
+    <!-- Screen 2: User Details -->
+    <div id="userDetailsScreen" class="screen">
+        <div class="container">
+            <div class="screen-header">
+                <h1>Your Details</h1>
+                <p>Complete your profile information</p>
+            </div>
+
+            <form id="userDetailsForm" class="form">
+                <div class="form-group">
+                    <label for="fullName">Full Name</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">●</span>
+                        <input 
+                            type="text" 
+                            id="fullName" 
+                            name="fullName" 
+                            placeholder="Enter your full name"
+                            required
+                        >
+                    </div>
+                    <small class="error"></small>
+                </div>
+
+                <div class="form-group">
+                    <label for="traderId">Trader ID</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">👤</span>
+                        <input 
+                            type="text" 
+                            id="traderId" 
+                            name="traderId" 
+                            placeholder="Enter your Trader ID"
+                            required
+                        >
+                    </div>
+                    <small class="error"></small>
+                </div>
+
+                <div class="form-group">
+                    <label for="initialAmount">Initial Deposit Amount (USDT)</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">$</span>
+                        <input 
+                            type="number" 
+                            id="initialAmount" 
+                            name="initialAmount" 
+                            placeholder="Enter amount in USDT"
+                            step="0.01"
+                            required
+                        >
+                    </div>
+                    <small class="error"></small>
+                </div>
+
+                <div class="insurance-fee-display">
+                    <div class="fee-item">
+                        <span>Insurance Premium</span>
+                        <span id="feeDisplay" class="fee-value highlight">0.00 USDT</span>
+                    </div>
+                </div>
+
+                <div class="consent-checkbox">
+                    <input type="checkbox" id="consentCheckbox">
+                    <label for="consentCheckbox">
+                        I agree that this 10% premium amount will be deducted from my deposit, coverage is valid for 12 months, and I accept the terms & conditions
+                    </label>
+                </div>
+
+                <button id="proceedBtn" type="submit" class="btn btn-primary full-width" disabled>
+                    Proceed to Payment
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Screen 3: Payment Page -->
+    <div id="paymentScreen" class="screen">
+        <div class="container">
+            <div class="screen-header">
+                <h1>Payment</h1>
+                <p>Complete your insurance payment</p>
+            </div>
+
+            <div class="payment-info">
+                <div class="fee-card glass">
+                    <h3>Insurance Premium</h3>
+                    <div class="amount" id="paymentAmount">0.00 USDT</div>
+                </div>
+
+                <div class="payment-details">
+                    <h3>Payment Details</h3>
+                    
+                    <div class="detail-item">
+                        <label>Wallet Address:</label>
+                        <div class="wallet-address-box">
+                            <code id="walletAddress">0x...</code>
+                            <button id="copyWalletBtn" class="btn-icon" title="Copy to clipboard">
+                                📋
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="detail-item">
+                        <label>Payment Amount:</label>
+                        <code id="paymentCodeAmount">0.00 USDT</code>
+                    </div>
+
+                    <div class="detail-item">
+                        <label>Select Network:</label>
+                        <select id="networkSelect" class="network-selector">
+                            <option value="bep20">BEP20 (Binance Smart Chain)</option>
+                            <option value="trc20">TRC20 (Tron Network)</option>
+                        </select>
+                        <code id="networkDisplay">Ethereum Network</code>
+                    </div>
+                </div>
+
+                <div class="qr-section">
+                    <h3>QR Code</h3>
+                    <p>Scan with your wallet</p>
+                    <div id="qrCode" class="qr-container glass"></div>
+                </div>
+
+                <div class="payment-instructions">
+                    <h3>Instructions:</h3>
+                    <ol>
+                        <li>Select your preferred payment network above</li>
+                        <li>Send exactly <strong id="instructionAmount">0.00 USDT</strong> to the wallet address</li>
+                        <li id="instructionNetwork">Use Ethereum mainnet only</li>
+                        <li>Wait for transaction confirmation</li>
+                        <li>Paste your transaction hash below</li>
+                        <li>Click "Verify Payment"</li>
+                    </ol>
+                </div>
+
+                <div class="form-group">
+                    <label for="txHash">Transaction Hash:</label>
+                    <div class="input-wrapper">
+                        <input 
+                            type="text" 
+                            id="txHash" 
+                            placeholder="Paste your transaction hash here"
+                            required
+                        >
+                    </div>
+                    <small style="color: var(--text-secondary); font-size: 11px; margin-top: 4px; display: block;">
+                        Find it in your wallet's transaction history
+                    </small>
+                </div>
+
+                <button id="paidBtn" class="btn btn-primary full-width">
+                    Verify Payment
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Screen 4: Payment Verification -->
+    <div id="verificationScreen" class="screen">
+        <div class="container">
+            <div class="verification-content">
+                <div class="verification-loader">
+                    <div class="check-spinner"></div>
+                    <h2>Verifying Payment...</h2>
+                    <p>This may take a few moments</p>
+                    <p class="small-text" id="verificationStatus">Checking blockchain...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Screen 5: Error Popup -->
+    <div id="errorScreen" class="screen">
+        <div class="container">
+            <div class="error-modal">
+                <div class="error-animation">
+                    <div class="error-cross">✕</div>
+                </div>
+                
+                <h2 id="errorTitle">Payment Verification Failed</h2>
+                <p id="errorMessage">Please verify your transaction on the blockchain and try again.</p>
+
+                <p class="closing-message">You will be redirected to home page in <span id="errorCountdown">5</span> seconds...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Screen 6: Success Popup -->
+    <div id="successScreen" class="screen">
+        <div class="container">
+            <div class="success-modal">
+                <div class="success-animation">
+                    <div class="success-checkmark">✓</div>
+                </div>
+                
+                <h2>Payment Successful!</h2>
+                <p>Your insurance policy is now active</p>
+                
+                <div class="success-details">
+                    <div class="detail-badge">
+                        <span>●</span>
+                        <span>Coverage Active</span>
+                    </div>
+                    <div class="detail-badge">
+                        <span>∞</span>
+                        <span id="coverageDuration">12 Months</span>
+                    </div>
+                    <div class="detail-badge">
+                        <span>✓</span>
+                        <span>Blockchain Verified</span>
+                    </div>
+                </div>
+
+                <p class="closing-message">Closing in <span id="closeCountdown">3</span> seconds...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confetti Canvas -->
+    <canvas id="confetti"></canvas>
+
+    <!-- Scripts -->
+    <script src="js/confetti.js?v=8"></script>
+    <script src="js/app.js?v=8"></script>
+</body>
+</html>

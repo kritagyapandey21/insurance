@@ -1,0 +1,26 @@
+{
+  "name": "crypto-insurance-telegram-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot for crypto-based insurance platform",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "nodemon bot.js"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "insurance",
+    "crypto"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "telegraf": "^4.14.0",
+    "telegram": "^2.26.22"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
