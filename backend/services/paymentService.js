@@ -103,7 +103,7 @@ class PaymentService {
                     
                     // Get amount from data (uint256)
                     const amountHex = log.data;
-                    const amount = parseInt(amountHex, 16) / 1e18; // USDT has 18 decimals on BSC
+                    const amount = parseInt(amountHex, 16) / 1e6; // USDT has 6 decimals on BSC (not 18!)
                     
                     console.log(`[BEP20 Verification] Found USDT transfer: to=${toAddress}, amount=${amount}`);
                     
