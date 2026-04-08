@@ -409,8 +409,8 @@ class InsuranceApp {
             return 'http://localhost:5000';
         }
         
-        // Production
-        return 'https://your-backend.com';
+        // Production - point to your VPS backend
+        return 'http://88.222.212.178:5000';
     }
 
     /**
