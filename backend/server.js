@@ -1,11 +1,10 @@
 /**
  * Backend Server - Crypto Insurance Platform
- * Express API with MongoDB integration
+ * Express API with PostgreSQL integration
  */
 
 require("dotenv").config();
 const express = require("express");
-const mongoose = require("mongoose");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
@@ -47,54 +46,16 @@ app.use("/api/", limiter);
 // DATABASE CONNECTION
 // ============================================
 
-mongoose.connect(process.env.MONGODB_URI || "mongodb://localhost:27017/crypto-insurance", {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-}).then(async () => {
-    console.log(`[${new Date().toISOString()}] ✅ MongoDB connected successfully`);
-    
-    // Drop problematic unique indexes to avoid null/duplicate issues
+async function initializeDatabase() {
     try {
-        const collection = User.collection;
-        const indexes = await collection.getIndexes();
-        
-        // Check if telegramId_1 unique index exists and drop it
-        if (indexes.telegramId_1) {
-            await collection.dropIndex("telegramId_1");
-            console.log(`[${new Date().toISOString()}] 🔧 Dropped problematic unique index on telegramId`);
-        }
-        
-        // Drop transactionHash unique index to allow development/testing
-        if (indexes.transactionHash_1) {
-            try {
-                await collection.dropIndex("transactionHash_1");
-                console.log(`[${new Date().toISOString()}] 🔧 Dropped unique index on transactionHash for testing`);
-            } catch (err) {
-                // Index might not be unique anymore, that's fine
-            }
-        }
-        
-        // Drop uniquePaymentId unique index to avoid null collision
-        if (indexes.uniquePaymentId_1) {
-            try {
-                await collection.dropIndex("uniquePaymentId_1");
-                console.log(`[${new Date().toISOString()}] 🔧 Dropped unique index on uniquePaymentId`);
-            } catch (err) {
-                // Index might not be unique anymore, that's fine
-            }
-        }
-    } catch (indexErr) {
-        if (indexErr.code === 27) {
-            // Index doesn't exist, that's fine
-            console.log(`[${new Date().toISOString()}] ✓ No problematic indexes found`);
-        } else {
-            console.log(`[${new Date().toISOString()}] ⚠️ Index cleanup:`, indexErr.message);
-        }
+        await User.initialize();
+        await User.checkConnection();
+        console.log(`[${new Date().toISOString()}] ✅ PostgreSQL connected successfully`);
+    } catch (err) {
+        console.error(`[${new Date().toISOString()}] ❌ PostgreSQL connection error:`, err.message);
+        process.exit(1);
     }
-}).catch(err => {
-    console.error(`[${new Date().toISOString()}] ❌ MongoDB connection error:`, err);
-    process.exit(1);
-});
+}
 
 // ============================================
 // ROUTES
@@ -140,9 +101,15 @@ app.use((err, req, res, next) => {
 // START SERVER
 // ============================================
 
-app.listen(PORT, () => {
-    console.log(`[${new Date().toISOString()}] 🚀 Server running on port ${PORT}`);
-    console.log(`[${new Date().toISOString()}] 📡 Environment: ${process.env.NODE_ENV || "development"}`);
-});
+async function startServer() {
+    await initializeDatabase();
+
+    app.listen(PORT, () => {
+        console.log(`[${new Date().toISOString()}] 🚀 Server running on port ${PORT}`);
+        console.log(`[${new Date().toISOString()}] 📡 Environment: ${process.env.NODE_ENV || "development"}`);
+    });
+}
+
+startServer();
 
 module.exports = app;
