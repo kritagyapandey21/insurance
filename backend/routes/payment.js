@@ -1,0 +1,576 @@
+/**
+ * Payment Routes
+ * Handles payment verification and insurance signup
+ */
+
+const express = require("express");
+const router = express.Router();
+const User = require("../models/User");
+const PaymentService = require("../services/paymentService");
+const { validatePaymentRequest, validatePaymentVerification } = require("../middleware/validation");
+
+const paymentService = new PaymentService();
+
+/**
+ * GET /api/payment-options
+ * Get available payment methods and wallet addresses
+ */
+router.get("/payment-options", (req, res) => {
+    try {
+        const paymentOptions = paymentService.getPaymentOptions();
+        
+        res.json({
+            success: true,
+            data: paymentOptions,
+            message: "Available payment methods for USDT insurance premium"
+        });
+    } catch (error) {
+        console.error(`[Payment Options Error] ${error.message}`);
+        res.status(500).json({
+            success: false,
+            message: "Error fetching payment options"
+        });
+    }
+});
+
+/**
+ * POST /api/verify-payment
+ * Verify payment on specific network
+ * Body: { txHash, amount, network (bep20 or trc20) }
+ */
+router.post("/verify-payment", async (req, res) => {
+    try {
+        const { txHash, amount, network } = req.body;
+
+        if (!txHash || !amount || !network) {
+            return res.status(400).json({
+                success: false,
+                message: "Missing required fields: txHash, amount, network"
+            });
+        }
+
+        console.log(`[Verify Payment] TxHash: ${txHash}, Amount: ${amount}, Network: ${network}`);
+
+        // Validate transaction hash format
+        if (!paymentService.isValidTransactionHash(txHash, network)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid transaction hash format"
+            });
+        }
+
+        const result = await paymentService.verifyPayment(txHash, amount, network);
+
+        if (result.success) {
+            return res.json({
+                success: true,
+                message: "Payment verified successfully",
+                data: result
+            });
+        } else {
+            return res.status(402).json({
+                success: false,
+                message: result.error || "Payment verification failed",
+                data: result
+            });
+        }
+    } catch (error) {
+        console.error(`[Payment Verification Error] ${error.message}`);
+        res.status(500).json({
+            success: false,
+            message: "Error verifying payment",
+            error: process.env.NODE_ENV === "development" ? error.message : undefined
+        });
+    }
+});
+
+/**
+ * POST /api/check-payment
+ * Verify payment and create/update user insurance record
+ */
+router.post("/check-payment", validatePaymentRequest, async (req, res) => {
+    try {
+        const { traderId, amount, fullName, telegramId, uniquePaymentId, walletAddress } = req.validatedData;
+        const { txHash, network } = req.body;
+
+        console.log(`[Payment Check] Processing payment for Trader: ${traderId}, Amount: ${amount} USDT, Network: ${network}, TxHash: ${txHash}`);
+
+        // Validate transaction hash
+        if (!txHash || txHash.trim().length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Transaction hash is required"
+            });
+        }
+
+        // Validate transaction hash format
+        if (!paymentService.isValidTransactionHash(txHash, network)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid transaction hash format"
+            });
+        }
+
+        // Check for duplicate payment
+        const isDuplicate = await paymentService.isDuplicatePayment(traderId, amount, User);
+        if (isDuplicate) {
+            return res.status(409).json({
+                success: false,
+                message: "Duplicate payment detected. Insurance already active for this trader."
+            });
+        }
+
+        // Check for duplicate transaction hash across all users
+        const isDuplicateHash = await paymentService.isDuplicateTransactionHash(txHash, User);
+        if (isDuplicateHash) {
+            return res.status(409).json({
+                success: false,
+                message: "This transaction hash has already been used for payment verification."
+            });
+        }
+
+        // Check if user already exists
+        let user = await User.findOne({ traderId });
+
+        if (user && user.paymentStatus === "confirmed") {
+            return res.status(409).json({
+                success: false,
+                message: "This trader already has an active insurance policy."
+            });
+        }
+
+        // Create or update user with pending status
+        if (!user) {
+            user = new User({
+                fullName,
+                traderId,
+                initialAmount: amount,
+                insuranceFee: amount * 0.1,
+                telegramId,
+                uniquePaymentId,
+                walletAddress,
+                ipAddress: req.ip,
+                userAgent: req.get("user-agent"),
+                paymentStatus: "pending",
+                transactionHash: txHash,
+                paymentNetwork: network
+            });
+        } else {
+            user.fullName = fullName;
+            user.initialAmount = amount;
+            user.insuranceFee = amount * 0.1;
+            user.uniquePaymentId = uniquePaymentId;
+            user.paymentStatus = "pending";
+            user.transactionHash = txHash;
+            user.paymentNetwork = network;
+        }
+
+        // Save user with pending status
+        await user.save();
+
+        // Verify payment on blockchain
+        console.log(`[Payment Verification] Verifying ${network} transaction: ${txHash}`);
+        const verification = await paymentService.verifyPayment(txHash, amount, network);
+
+        if (verification.success) {
+            console.log(`[Payment Success] Transaction verified: ${verification.transactionHash}`);
+            
+            // Update user status to confirmed
+            user.paymentStatus = "confirmed";
+            user.paymentVerifiedAt = new Date();
+            user.coverageStatus = "active";
+            user.coverageStartDate = new Date();
+            
+            // Set coverage end date to 3 months from now
+            const endDate = new Date();
+            endDate.setMonth(endDate.getMonth() + 3);
+            user.coverageEndDate = endDate;
+
+            await user.save();
+
+            return res.json({
+                success: true,
+                message: "Payment verified. Insurance coverage activated!",
+                data: {
+                    policyId: user._id,
+                    traderId: user.traderId,
+                    coverageStartDate: user.coverageStartDate,
+                    coverageEndDate: user.coverageEndDate,
+                    coverageAmount: user.initialAmount,
+                    premiumPaid: user.insuranceFee,
+                    transactionHash: verification.transactionHash,
+                    confirmations: verification.confirmations
+                }
+            });
+        } else {
+            // Payment verification failed
+            user.paymentStatus = "failed";
+            await user.save();
+
+            console.log(`[Payment Failed] Transaction verification failed: ${verification.error}`);
+
+            return res.status(402).json({
+                success: false,
+                message: `Payment verification failed: ${verification.error}`,
+                details: verification
+            });
+        }
+    } catch (error) {
+        console.error(`[Payment Error] ${error.message}`, error);
+
+        res.status(500).json({
+            success: false,
+            message: "Error processing payment",
+            error: process.env.NODE_ENV === "development" ? error.message : undefined
+        });
+    }
+});
+
+/**
+ * GET /api/user-status/:traderId
+ * Check insurance status for a trader
+ */
+router.get("/user-status/:traderId", async (req, res) => {
+    try {
+        const { traderId } = req.params;
+
+        const user = await User.findOne({ traderId });
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                traderId: user.traderId,
+                fullName: user.fullName,
+                coverageStatus: user.coverageStatus,
+                coverageStartDate: user.coverageStartDate,
+                coverageEndDate: user.coverageEndDate,
+                initialAmount: user.initialAmount,
+                paymentStatus: user.paymentStatus
+            }
+        });
+    } catch (error) {
+        console.error(`[Status Check Error] ${error.message}`);
+
+        res.status(500).json({
+            success: false,
+            message: "Error fetching user status"
+        });
+    }
+});
+
+/**
+ * POST /api/claim
+ * Submit an insurance claim (placeholder)
+ */
+router.post("/claim", async (req, res) => {
+    try {
+        const { traderId, amount, description } = req.body;
+
+        if (!traderId || !amount) {
+            return res.status(400).json({
+                success: false,
+                message: "Missing required fields: traderId, amount"
+            });
+        }
+
+        const user = await User.findOne({ traderId });
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        if (user.coverageStatus !== "active") {
+            return res.status(409).json({
+                success: false,
+                message: "No active coverage"
+            });
+        }
+
+        // Store claim in database (implement full claim logic in production)
+        console.log(`[Claim Submitted] Trader: ${traderId}, Amount: ${amount}, Description: ${description}`);
+
+        res.json({
+            success: true,
+            message: "Claim submitted successfully. Our team will review it within 14 business days.",
+            data: {
+                claimId: `CLM_${traderId}_${Date.now()}`,
+                status: "pending_review"
+            }
+        });
+    } catch (error) {
+        console.error(`[Claim Error] ${error.message}`);
+
+        res.status(500).json({
+            success: false,
+            message: "Error submitting claim"
+        });
+    }
+});
+
+/**
+ * GET /api/stats
+ * Get platform statistics (admin only)
+ */
+router.get("/stats", async (req, res) => {
+    try {
+        const totalUsers = await User.countDocuments();
+        const activeUsers = await User.countDocuments({ coverageStatus: "active" });
+        const totalPremiums = await User.aggregate([
+            {
+                $group: {
+                    _id: null,
+                    total: { $sum: "$insuranceFee" }
+                }
+            }
+        ]);
+
+        const totalCoverage = await User.aggregate([
+            {
+                $group: {
+                    _id: null,
+                    total: { $sum: "$initialAmount" }
+                }
+            }
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                totalUsers,
+                activeUsers,
+                totalPremiums: totalPremiums[0]?.total || 0,
+                totalCoverage: totalCoverage[0]?.total || 0,
+                timestamp: new Date()
+            }
+        });
+    } catch (error) {
+        console.error(`[Stats Error] ${error.message}`);
+
+        res.status(500).json({
+            success: false,
+            message: "Error fetching statistics"
+        });
+    }
+});
+
+/**
+ * POST /api/create-user
+ * Create a new user record from telegram bot
+ */
+router.post("/create-user", async (req, res) => {
+    try {
+        const { fullName, traderId, telegramId, initialAmount, insuranceFee } = req.body;
+
+        if (!traderId || !fullName) {
+            return res.status(400).json({
+                success: false,
+                message: "Missing required fields: fullName, traderId"
+            });
+        }
+
+        // Check if user already exists
+        let user = await User.findOne({ traderId });
+
+        if (user) {
+            return res.status(409).json({
+                success: false,
+                message: "Trader ID already registered",
+                data: user
+            });
+        }
+
+        // Create new user
+        user = new User({
+            fullName,
+            traderId,
+            telegramId: telegramId || null,
+            initialAmount: initialAmount || 100,
+            insuranceFee: insuranceFee || (initialAmount ? initialAmount * 0.1 : 10),
+            paymentStatus: "pending",
+            coverageStatus: "inactive"
+        });
+
+        await user.save();
+
+        console.log(`[${new Date().toISOString()}] ✅ New user created from telegram: ${traderId}`);
+
+        res.status(201).json({
+            success: true,
+            message: "User created successfully",
+            data: {
+                userId: user._id,
+                traderId: user.traderId,
+                fullName: user.fullName,
+                insuranceFee: user.insuranceFee,
+                paymentStatus: user.paymentStatus
+            }
+        });
+    } catch (error) {
+        console.error(`[Create User Error] ${error.message}`);
+
+        res.status(500).json({
+            success: false,
+            message: "Error creating user",
+            error: process.env.NODE_ENV === "development" ? error.message : undefined
+        });
+    }
+});
+
+/**
+ * GET /api/users-list
+ * Get all users with premium details (for admin)
+ */
+router.get("/users-list", async (req, res) => {
+    try {
+        const users = await User.find({}, {
+            fullName: 1,
+            traderId: 1,
+            telegramId: 1,
+            initialAmount: 1,
+            insuranceFee: 1,
+            paymentStatus: 1,
+            coverageStatus: 1,
+            registeredAt: 1,
+            createdAt: 1
+        }).sort({ createdAt: -1 });
+
+        const totalPremium = users.reduce((sum, user) => sum + (user.insuranceFee || 0), 0);
+
+        res.json({
+            success: true,
+            data: users,
+            summary: {
+                totalUsers: users.length,
+                totalPremiumCollected: totalPremium,
+                averagePremium: users.length > 0 ? totalPremium / users.length : 0
+            }
+        });
+    } catch (error) {
+        console.error(`[Users List Error] ${error.message}`);
+
+        res.status(500).json({
+            success: false,
+            message: "Error fetching users list"
+        });
+    }
+});
+
+/**
+ * GET /api/user-by-telegram/:telegramId
+ * Get user insurance data by telegram ID
+ */
+router.get("/user-by-telegram/:telegramId", async (req, res) => {
+    try {
+        const { telegramId } = req.params;
+
+        const user = await User.findOne({ telegramId: parseInt(telegramId) });
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "No insurance record found"
+            });
+        }
+
+        // Calculate coverage expiry date (3 months from coverage start or creation)
+        let validUntil = null;
+        if (user.coverageEndDate) {
+            validUntil = user.coverageEndDate;
+        } else if (user.coverageStartDate) {
+            const endDate = new Date(user.coverageStartDate);
+            endDate.setMonth(endDate.getMonth() + 3);
+            validUntil = endDate;
+        } else {
+            // Use creation date + 3 months
+            const createdDate = user.createdAt || new Date();
+            const endDate = new Date(createdDate);
+            endDate.setMonth(endDate.getMonth() + 3);
+            validUntil = endDate;
+        }
+
+        res.json({
+            success: true,
+            data: {
+                traderId: user.traderId,
+                fullName: user.fullName,
+                telegramId: user.telegramId,
+                initialAmount: user.initialAmount,
+                insuranceFee: user.insuranceFee,
+                paymentStatus: user.paymentStatus,
+                coverageStatus: user.coverageStatus,
+                coverageStartDate: user.coverageStartDate,
+                coverageEndDate: validUntil,
+                transactionHash: user.transactionHash,
+                createdAt: user.createdAt
+            }
+        });
+    } catch (error) {
+        console.error(`[User By Telegram Error] ${error.message}`);
+
+        res.status(500).json({
+            success: false,
+            message: "Error fetching user data"
+        });
+    }
+});
+
+/**
+ * POST /api/verify-trader-affiliate
+ * Verify if trader was registered through affiliate link via @AffiliatePocketBot
+ * Body: { traderId }
+ */
+router.post("/verify-trader-affiliate", async (req, res) => {
+    try {
+        const { traderId } = req.body;
+
+        if (!traderId || !traderId.toString().trim()) {
+            return res.status(400).json({
+                success: false,
+                message: "Trader ID is required"
+            });
+        }
+
+        console.log(`[Affiliate Verification] Starting verification for trader: ${traderId}`);
+
+        // Import admin functions
+        const admin = require("../admin");
+
+        // Verify with affiliate bot
+        const verificationResult = await admin.verifyTraderWithAffiliateBot(traderId);
+
+        if (verificationResult.success) {
+            return res.json({
+                success: true,
+                message: verificationResult.registered ? "Trader verified through affiliate system" : "Trader not found in affiliate system",
+                data: verificationResult
+            });
+        } else {
+            return res.status(500).json({
+                success: false,
+                message: "Error verifying trader",
+                error: verificationResult.error
+            });
+        }
+
+    } catch (error) {
+        console.error(`[Affiliate Verification Error] ${error.message}`);
+
+        res.status(500).json({
+            success: false,
+            message: "Error verifying trader with affiliate bot",
+            error: process.env.NODE_ENV === "development" ? error.message : undefined
+        });
+    }
+});
+
+module.exports = router;
