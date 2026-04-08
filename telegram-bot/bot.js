@@ -53,6 +53,7 @@ async function saveUserToDatabase(userId, traderId, firstName, lastName) {
  */
 global.registeredUsers = global.registeredUsers || {};
 global.usersAwaitingTraderId = global.usersAwaitingTraderId || {};
+global.pendingRegistrations = global.pendingRegistrations || {};
 
 /**
  * Middleware: Log all updates
@@ -427,19 +428,96 @@ bot.action('insured_claim_insurance', async (ctx) => {
   try {
     await ctx.answerCbQuery();
 
-    // Set user state to awaiting claim trader ID
-    global.usersAwaitingClaimTrader = global.usersAwaitingClaimTrader || {};
-    global.usersAwaitingClaimTrader[ctx.from.id] = true;
+    // Fetch user data to get trader ID
+    try {
+      const response = await axios.get(`${BACKEND_URL}/api/user-by-telegram/${ctx.from.id}`);
+      
+      if (response.data && response.data.success) {
+        const userData = response.data.data;
+        
+        // Store claim request as pending
+        global.pendingClaims = global.pendingClaims || {};
+        global.pendingClaims[ctx.from.id] = {
+          userId: ctx.from.id,
+          firstName: ctx.from.first_name,
+          lastName: ctx.from.last_name || '',
+          traderId: userData.traderId,
+          fullName: userData.fullName,
+          insuranceFee: userData.insuranceFee,
+          submittedAt: new Date().toLocaleString(),
+          status: 'pending_admin_approval'
+        };
 
-    const claimInitialMessage = `
-💰 INSURANCE CLAIM PROCESS
+        // Send user confirmation
+        const claimMessage = `
+🔍 CLAIM VERIFICATION IN PROGRESS
 
-Please provide your details below to file a claim.
+Your insurance claim is being reviewed by our admin team.
 
-Step 1️⃣: Send your Trader ID 👇`;
+📋 Your Details:
+• Name: ${userData.fullName}
+• Trader ID: ${userData.traderId}
+• Insurance Premium: $${userData.insuranceFee}
 
-    await ctx.reply(claimInitialMessage);
-    console.log(`[${new Date().toISOString()}] User ${ctx.from.id} initiated insurance claim - waiting for Trader ID`);
+⏳ Status: Pending Admin Review
+
+You will receive a notification once the admin reviews your claim.
+This typically takes 5-10 minutes.
+
+Thank you for your patience!`;
+
+        await ctx.reply(claimMessage);
+
+        // === SEND ADMIN NOTIFICATION ===
+        const adminClaimNotification = `
+🔔 NEW INSURANCE CLAIM REQUEST
+
+👤 User Information:
+• Name: ${userData.fullName}
+• Telegram ID: ${ctx.from.id}
+• Username: @${ctx.from.username || 'N/A'}
+• Trader ID: ${userData.traderId}
+
+💰 Insurance Details:
+• Premium Paid: $${userData.insuranceFee}
+• Payment Status: ${userData.paymentStatus || 'Verified'}
+
+📅 Claim Time: ${new Date().toLocaleString()}
+
+⚠️ ACTION REQUIRED:
+Please verify that this user's account meets ALL policy conditions before approving:
+
+✓ Account MUST be verified on Pocket Option
+✓ Account MUST be created through referral link
+✓ Account must NOT have any withdrawals before loss
+✓ NO suspicious trading activities
+✓ Claim must be for TOTAL account loss only
+
+👉 Click below to Approve or Deny this claim:`;
+
+        await ctx.telegram.sendMessage(
+          ADMIN_ID,
+          adminClaimNotification,
+          Markup.inlineKeyboard([
+            [
+              Markup.button.callback("✅ APPROVE CLAIM", `approve_claim_${ctx.from.id}`),
+              Markup.button.callback("❌ DENY CLAIM", `deny_claim_${ctx.from.id}`)
+            ]
+          ])
+        );
+
+        console.log(`[${new Date().toISOString()}] New claim pending approval: User ${ctx.from.id} (${userData.traderId})`);
+
+      } else {
+        // User not found
+        await ctx.reply("❌ Your insurance details could not be found. Please contact support.");
+        console.log(`[${new Date().toISOString()}] Claim initiated by uninsured user ${ctx.from.id}`);
+      }
+    } catch (error) {
+      console.error(`[Error fetching user for claim] ${error.message}`);
+      await ctx.reply("❌ An error occurred while processing your claim. Please try again.");
+    }
+
   } catch (error) {
     console.error(`[ERROR in insured_claim_insurance] ${error.message}`, error);
     await ctx.reply("❌ An error occurred. Please try again.");
@@ -749,7 +827,7 @@ bot.action('user_insured_no', async (ctx) => {
     await ctx.editMessageText('❓ Are you already insured with us?\n\n❌ No, I\'m Not Insured');
 
     const accountCreationMessage = `YOUR ACCOUNT MUST BE UNDER THIS LINK 👇
-✅ learnwithtanishq.com/pocketoption
+✅ https://u3.shortink.io/register?utm_campaign=834817&utm_source=affiliate&utm_medium=sr&a=POY4xB1cswM8K7&al=1745844&ac=insurance&cid=949805&code=Tanishq
 
 Important Points:
 ✔ VPN must be OFF
@@ -760,22 +838,7 @@ Important Points:
 🍃 DEPOSIT 100$ (You can use bonus if you want but we will not count it as in our insurance)
 
 Send your Trader Id Number only.
-(Ex. - 132547687)
-
-Follow these steps carefully: 👇
-
-✅ CREATE ACCOUNT THROUGH THIS LINK -
-learnwithtanishq.com/pocketoption
-
-Important Points:
-✔ VPN OFF hona chahiye
-✔ Web version use karna better hai
-✔ New email use karna
-✔ Same documents se verify kar sakte ho
-
-🍃 DEPOSIT 100$ with Bonus
-
-🍾 APPLY PROMO CODE - TANISHQ`;
+(Ex. - 132547687)`;
 
     await ctx.reply(accountCreationMessage);
 
@@ -837,6 +900,72 @@ Status: Ready to send (not implemented yet - add database integration)`;
       await ctx.reply(confirmMessage);
       console.log(`[${new Date().toISOString()}] Admin ${ctx.from.id} created announcement`);
       return;
+    }
+
+    // ===== NEW REGISTRATION TRADER ID VERIFICATION =====
+    // Check if user is awaiting trader ID for NEW insurance registration
+    global.usersAwaitingTraderId = global.usersAwaitingTraderId || {};
+    global.pendingRegistrations = global.pendingRegistrations || {};
+
+    if (global.usersAwaitingTraderId[ctx.from.id]) {
+      const traderId = ctx.message.text?.trim();
+      
+      if (traderId && traderId.length > 0 && !traderId.startsWith('/')) {
+        // Store this as a pending registration
+        global.pendingRegistrations[ctx.from.id] = {
+          traderId: traderId,
+          telegramId: ctx.from.id,
+          firstName: ctx.from.first_name,
+          lastName: ctx.from.last_name || '',
+          username: ctx.from.username || 'N/A',
+          submittedAt: new Date().toLocaleString(),
+          status: 'pending'
+        };
+
+        // Remove from awaiting list
+        delete global.usersAwaitingTraderId[ctx.from.id];
+
+        // Send confirmation message to user
+        const confirmMsg = `
+✅ Trader ID Received!
+
+Your Trader ID: ${traderId}
+Status: ⏳ Waiting for admin verification...
+
+You will receive a notification once admin approves your registration.
+Thank you for your patience!`;
+
+        await ctx.reply(confirmMsg);
+
+        // === SEND ADMIN NOTIFICATION ===
+        const adminNotification = `
+🔔 NEW REGISTRATION REQUEST
+
+👤 User Details:
+• Name: ${ctx.from.first_name} ${ctx.from.last_name || ''}
+• Telegram ID: ${ctx.from.id}
+• Username: @${ctx.from.username || 'N/A'}
+
+📊 Registration Info:
+• Trader ID: ${traderId}
+• Time: ${new Date().toLocaleString()}
+
+Please review and approve or deny this registration.`;
+
+        await ctx.telegram.sendMessage(
+          ADMIN_ID,
+          adminNotification,
+          Markup.inlineKeyboard([
+            [
+              Markup.button.callback("✅ APPROVE", `approve_user_${ctx.from.id}`),
+              Markup.button.callback("❌ DENY", `deny_user_${ctx.from.id}`)
+            ]
+          ])
+        );
+
+        console.log(`[${new Date().toISOString()}] New registration pending: User ${ctx.from.id} with Trader ID: ${traderId}`);
+        return;
+      }
     }
 
     // Check if user is filing a claim and awaiting trader ID
@@ -1312,6 +1441,194 @@ Please try again in a moment.`;
     }
   } catch (error) {
     console.error(`[ERROR in generic handler] ${error.message}`, error);
+  }
+});
+
+/**
+ * ===== ADMIN APPROVAL SYSTEM =====
+ */
+
+/**
+ * Handle Admin - Approve User Registration
+ */
+bot.action(/^approve_user_(.+)$/, async (ctx) => {
+  try {
+    // Only admin can approve
+    if (!isAdmin(ctx.from.id)) {
+      await ctx.answerCbQuery("❌ You don't have permission", true);
+      return;
+    }
+
+    const userId = parseInt(ctx.match[1]);
+    await ctx.answerCbQuery("✅ User approved!");
+
+    // Get pending registration data
+    global.pendingRegistrations = global.pendingRegistrations || {};
+    const userData = global.pendingRegistrations[userId];
+
+    if (!userData) {
+      await ctx.reply("⚠️ User registration data not found!");
+      return;
+    }
+
+    // Update the button/message
+    await ctx.editMessageText(`
+🔔 NEW REGISTRATION REQUEST
+
+👤 User Details:
+• Name: ${userData.firstName} ${userData.lastName}
+• Telegram ID: ${userId}
+• Username: @${userData.username}
+
+📊 Registration Info:
+• Trader ID: ${userData.traderId}
+• Time: ${userData.submittedAt}
+
+✅ STATUS: APPROVED BY ADMIN`);
+
+    // Send success message to the user
+    const approvalMessage = `
+✅ REGISTRATION APPROVED!
+
+Congratulations! Your account has been verified by our admin.
+
+📋 Your Details:
+• Trader ID: ${userData.traderId}
+• Status: ✅ VERIFIED
+
+🎉 Next Steps:
+Now you can access the insurance mini app to complete your payment and get insured!
+
+Click the button below to proceed with insurance:`;
+
+    // Check if MINI_APP_URL is properly set
+    const isValidHttpsUrl = MINI_APP_URL && MINI_APP_URL.startsWith('https://');
+
+    if (isValidHttpsUrl) {
+      await ctx.telegram.sendMessage(
+        userId,
+        approvalMessage,
+        Markup.inlineKeyboard([
+          [Markup.button.webApp(
+            "🛡️ Open Insurance App",
+            `${MINI_APP_URL}?telegram_user_id=${userId}&trader_id=${encodeURIComponent(userData.traderId)}`
+          )],
+        ])
+      );
+    } else {
+      await ctx.telegram.sendMessage(userId, approvalMessage);
+    }
+
+    // Mark as approved and remove from pending
+    userData.status = 'approved';
+    global.pendingRegistrations[userId] = userData;
+
+    // Send admin confirmation
+    await ctx.reply(`✅ Approval notification sent to user ${userId}!`);
+    console.log(`[${new Date().toISOString()}] ✅ Admin ${ctx.from.id} APPROVED user ${userId} with Trader ID ${userData.traderId}`);
+
+  } catch (error) {
+    console.error(`[ERROR in approve_user] ${error.message}`, error);
+    await ctx.reply("❌ An error occurred during approval!");
+  }
+});
+
+/**
+ * Handle Admin - Deny User Registration
+ */
+bot.action(/^deny_user_(.+)$/, async (ctx) => {
+  try {
+    // Only admin can deny
+    if (!isAdmin(ctx.from.id)) {
+      await ctx.answerCbQuery("❌ You don't have permission", true);
+      return;
+    }
+
+    const userId = parseInt(ctx.match[1]);
+    await ctx.answerCbQuery("❌ User denied!");
+
+    // Get pending registration data
+    global.pendingRegistrations = global.pendingRegistrations || {};
+    const userData = global.pendingRegistrations[userId];
+
+    if (!userData) {
+      await ctx.reply("⚠️ User registration data not found!");
+      return;
+    }
+
+    // Update the button/message
+    await ctx.editMessageText(`
+🔔 NEW REGISTRATION REQUEST
+
+👤 User Details:
+• Name: ${userData.firstName} ${userData.lastName}
+• Telegram ID: ${userId}
+• Username: @${userData.username}
+
+📊 Registration Info:
+• Trader ID: ${userData.traderId}
+• Time: ${userData.submittedAt}
+
+❌ STATUS: DENIED BY ADMIN`);
+
+    // Send rejection message to the user
+    const denialMessage = `
+❌ REGISTRATION NOT APPROVED
+
+Sorry, your account registration could not be verified at this time.
+
+📋 Your Information:
+• Trader ID: ${userData.traderId}
+• Status: ❌ NOT VERIFIED
+
+⚠️ Possible Reasons:
+• Account not created through our affiliate link
+• Missing required documentation
+• Account verification incomplete
+• Policy violation detected
+
+📝 Please Note:
+Your account must meet ALL requirements:
+✓ Created via our link: learnwithtanishq.com/pocketoption
+✓ Account verified on Pocket Option
+✓ Minimum $100 USDT deposit
+✓ All documents properly verified
+
+🔄 Next Steps:
+If you believe this is an error, please try again with:
+1. A new account created through our link
+2. Verified documents
+3. Minimum $100 deposit
+
+OR
+
+Type /start and select "No, I'm Not Insured" to restart the process.
+
+💬 Need help? Contact our support team!`;
+
+    await ctx.telegram.sendMessage(userId, denialMessage);
+
+    // Mark as denied and ask for trader ID again
+    const retryMessage = `
+
+After creating/verifying your account properly, send your Trader ID again:`;
+
+    await ctx.telegram.sendMessage(userId, retryMessage);
+
+    // Mark user to await trader ID again
+    global.usersAwaitingTraderId[userId] = true;
+
+    // Mark as denied in pending
+    userData.status = 'denied';
+    global.pendingRegistrations[userId] = userData;
+
+    // Send admin confirmation
+    await ctx.reply(`❌ Denial notification sent to user ${userId}! They can retry with a new Trader ID.`);
+    console.log(`[${new Date().toISOString()}] ❌ Admin ${ctx.from.id} DENIED user ${userId} with Trader ID ${userData.traderId}`);
+
+  } catch (error) {
+    console.error(`[ERROR in deny_user] ${error.message}`, error);
+    await ctx.reply("❌ An error occurred during denial!");
   }
 });
 
