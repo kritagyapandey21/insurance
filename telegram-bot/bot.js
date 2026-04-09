@@ -177,7 +177,7 @@ bot.help((ctx) => {
         `• Check if you're insured → /start\n` +
         `• Get new insurance → /start → Click "No"\n` +
         `• View policy → /status\n\n` +
-        `For inquiries, contact support@cryptoshield.io`
+        `For inquiries, contact @Pocketshield0`
       );
     }
   } catch (error) {
