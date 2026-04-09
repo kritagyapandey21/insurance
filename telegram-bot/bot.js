@@ -593,11 +593,29 @@ bot.action('admin_stats', async (ctx) => {
       const response = await axios.get(`${BACKEND_URL}/api/users-list`);
       if (response.data && response.data.data) {
         const users = response.data.data;
-        totalPremium = users.reduce((sum, user) => sum + (user.insuranceFee || 0), 0);
+
+        // Normalize legacy rows created by an older premium-scaling bug.
+        // Old rows may have initialAmount=10 and insuranceFee=1 for a $10 premium.
+        const getNormalizedPremium = (user) => {
+          const premium = Number(user.insuranceFee || 0);
+          const initialAmount = Number(user.initialAmount || 0);
+          if (premium === 1 && initialAmount === 10) {
+            return 10;
+          }
+          return premium;
+        };
+
+        totalPremium = users.reduce((sum, user) => sum + getNormalizedPremium(user), 0);
         
         if (users.length > 0) {
           userPremiumDetails = users
-            .map((user, idx) => `${idx + 1}. ${user.fullName}\n   💰 Premium: $${user.insuranceFee}\n   ID: ${user.traderId}`)
+            .map((user, idx) => {
+              const normalizedPremium = getNormalizedPremium(user);
+              const premiumText = Number.isInteger(normalizedPremium)
+                ? normalizedPremium
+                : normalizedPremium.toFixed(2);
+              return `${idx + 1}. ${user.fullName}\n   💰 Premium: $${premiumText}\n   ID: ${user.traderId}`;
+            })
             .join('\n\n');
         } else {
           userPremiumDetails = 'No users registered yet.';
