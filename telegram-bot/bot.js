@@ -49,6 +49,64 @@ async function saveUserToDatabase(userId, traderId, firstName, lastName) {
 }
 
 /**
+ * Queue registration for manual admin verification
+ */
+async function queuePendingRegistration(ctx, traderId) {
+  global.usersAwaitingTraderId = global.usersAwaitingTraderId || {};
+  global.pendingRegistrations = global.pendingRegistrations || {};
+
+  global.pendingRegistrations[ctx.from.id] = {
+    traderId: traderId,
+    telegramId: ctx.from.id,
+    firstName: ctx.from.first_name,
+    lastName: ctx.from.last_name || '',
+    username: ctx.from.username || 'N/A',
+    submittedAt: new Date().toLocaleString(),
+    status: 'pending'
+  };
+
+  delete global.usersAwaitingTraderId[ctx.from.id];
+
+  const confirmMsg = `
+✅ Trader ID Received!
+
+Your Trader ID: ${traderId}
+Status: ⏳ Waiting for admin verification...
+
+You will receive a notification once admin approves your registration.
+Thank you for your patience!`;
+
+  await ctx.reply(confirmMsg);
+
+  const adminNotification = `
+🔔 NEW REGISTRATION REQUEST
+
+👤 User Details:
+• Name: ${ctx.from.first_name} ${ctx.from.last_name || ''}
+• Telegram ID: ${ctx.from.id}
+• Username: @${ctx.from.username || 'N/A'}
+
+📊 Registration Info:
+• Trader ID: ${traderId}
+• Time: ${new Date().toLocaleString()}
+
+Please review and approve or deny this registration.`;
+
+  await ctx.telegram.sendMessage(
+    ADMIN_ID,
+    adminNotification,
+    Markup.inlineKeyboard([
+      [
+        Markup.button.callback("✅ APPROVE", `approve_user_${ctx.from.id}`),
+        Markup.button.callback("❌ DENY", `deny_user_${ctx.from.id}`)
+      ]
+    ])
+  );
+
+  console.log(`[${new Date().toISOString()}] New registration pending: User ${ctx.from.id} with Trader ID: ${traderId}`);
+}
+
+/**
  * Store for user data (in production, use a database)
  */
 global.registeredUsers = global.registeredUsers || {};
@@ -929,59 +987,7 @@ Status: Ready to send (not implemented yet - add database integration)`;
       const traderId = ctx.message.text?.trim();
       
       if (traderId && traderId.length > 0 && !traderId.startsWith('/')) {
-        // Store this as a pending registration
-        global.pendingRegistrations[ctx.from.id] = {
-          traderId: traderId,
-          telegramId: ctx.from.id,
-          firstName: ctx.from.first_name,
-          lastName: ctx.from.last_name || '',
-          username: ctx.from.username || 'N/A',
-          submittedAt: new Date().toLocaleString(),
-          status: 'pending'
-        };
-
-        // Remove from awaiting list
-        delete global.usersAwaitingTraderId[ctx.from.id];
-
-        // Send confirmation message to user
-        const confirmMsg = `
-✅ Trader ID Received!
-
-Your Trader ID: ${traderId}
-Status: ⏳ Waiting for admin verification...
-
-You will receive a notification once admin approves your registration.
-Thank you for your patience!`;
-
-        await ctx.reply(confirmMsg);
-
-        // === SEND ADMIN NOTIFICATION ===
-        const adminNotification = `
-🔔 NEW REGISTRATION REQUEST
-
-👤 User Details:
-• Name: ${ctx.from.first_name} ${ctx.from.last_name || ''}
-• Telegram ID: ${ctx.from.id}
-• Username: @${ctx.from.username || 'N/A'}
-
-📊 Registration Info:
-• Trader ID: ${traderId}
-• Time: ${new Date().toLocaleString()}
-
-Please review and approve or deny this registration.`;
-
-        await ctx.telegram.sendMessage(
-          ADMIN_ID,
-          adminNotification,
-          Markup.inlineKeyboard([
-            [
-              Markup.button.callback("✅ APPROVE", `approve_user_${ctx.from.id}`),
-              Markup.button.callback("❌ DENY", `deny_user_${ctx.from.id}`)
-            ]
-          ])
-        );
-
-        console.log(`[${new Date().toISOString()}] New registration pending: User ${ctx.from.id} with Trader ID: ${traderId}`);
+        await queuePendingRegistration(ctx, traderId);
         return;
       }
     }
@@ -1177,277 +1183,16 @@ Available in Admin Panel: 📋 Pending Claims`;
       const traderId = ctx.message.text?.trim();
       
       if (traderId && traderId.length > 0 && !traderId.startsWith('/')) {
-        // User sent their trader ID - verify with affiliate bot first
-        delete global.usersAwaitingTraderId[ctx.from.id];
-
-        console.log(`[${new Date().toISOString()}] 🔍 Verifying Trader ID ${traderId} with @AffiliatePocketBot`);
-        await ctx.reply("🔍 Verifying your trader ID with @AffiliatePocketBot...");
-
-        try {
-          // Verify with affiliate bot
-          const affiliateVerification = await affiliateBotService.verifyTraderWithAffiliate(traderId);
-
-          if (affiliateVerification && affiliateVerification.registered) {
-            console.log(`[${new Date().toISOString()}] ✅ Trader ${traderId} verified through affiliate bot`);
-
-            // Store user data in memory
-            global.registeredUsers = global.registeredUsers || {};
-            global.registeredUsers[ctx.from.id] = {
-              traderId: traderId,
-              firstName: ctx.from.first_name,
-              lastName: ctx.from.last_name || '',
-              registeredAt: new Date().toLocaleString(),
-              affiliateData: affiliateVerification
-            };
-
-            // Save to MongoDB via backend API
-            await saveUserToDatabase(ctx.from.id, traderId, ctx.from.first_name, ctx.from.last_name);
-
-            // Show terms & conditions
-            const termsMessage = `
-✅ Great! You are registered through our affiliate link!
-
-📋 Your Account Details:
-🆔 Trader ID: ${traderId}
-📅 Registration: ${affiliateVerification.regDate || 'N/A'}
-🌍 Country: ${affiliateVerification.country || 'N/A'}
-✔️ Verified: ${affiliateVerification.verified ? 'Yes ✅' : 'No ❌'}
-💰 Balance: ${affiliateVerification.balance || 'N/A'}
-💸 FTD: ${affiliateVerification.ftdAmount || 'N/A'}
-
-📋 TERMS & CONDITIONS
-
-Insurance Coverage Terms:
-✓ Coverage applies to total account loss only
-✓ Account must be verified via Pocket Option
-✓ Account created through our referral link
-✓ No withdrawals before loss event
-✓ No suspicious or prohibited trading activities
-✓ Premium: 10% of deposit amount
-✓ Coverage period: 3 months from activation
-
-⚠️ NOT Covered:
-✗ Partial account losses
-✗ After any withdrawal is made
-✗ Unverified accounts
-✗ Manual trading losses
-✗ Accounts not created through our link
-
-By proceeding, you agree to these terms.`;
-
-            // Check if MINI_APP_URL is properly set with HTTPS
-            const isValidHttpsUrl = MINI_APP_URL && MINI_APP_URL.startsWith('https://');
-
-            if (isValidHttpsUrl) {
-              await ctx.reply(
-                termsMessage,
-                Markup.inlineKeyboard([
-                  [Markup.button.webApp(
-                    "🛡️ Open Insurance App",
-                    `${MINI_APP_URL}?telegram_user_id=${ctx.from.id}&trader_id=${encodeURIComponent(traderId)}`
-                  )],
-                  [Markup.button.callback("🔙 Main Menu", "insured_go_back")]
-                ])
-              );
-            } else {
-              const fallbackMessage = `${termsMessage}
-
-⚠️ Setup Required:
-The mini app is currently being configured. Please contact support to proceed with your insurance.`;
-              
-              await ctx.reply(fallbackMessage);
-              console.warn(`[WARNING] MINI_APP_URL not configured. User ${ctx.from.id} cannot access mini app.`);
-            }
-
-            console.log(`[${new Date().toISOString()}] ✅ User ${ctx.from.id} verified with Trader ID ${traderId}`);
-          } else {
-            // User NOT found in affiliate system
-            const notFoundMessage = `
-❌ Sorry! You haven't created your account through our affiliate link!
-
-Trader ID: ${traderId}
-
-This Trader ID was not registered using our special affiliate link.
-
-To get insured, please:
-1️⃣ Create a new account via: learnwithtanishq.com/pocketoption
-2️⃣ Verify your account on Pocket Option
-3️⃣ Deposit minimum \$100
-4️⃣ Send back your new Trader ID
-
-⚠️ Important Points:
-• VPN must be OFF
-• Use web version (better experience)
-• Use a new email address
-• Use same documents for verification
-• Apply promo code: TANISHQ
-
-🍾 You can use bonus funds for deposits, but we count only your real deposit for insurance.
-
-After creating account through our link, send your new Trader ID here!`;
-
-            await ctx.reply(
-              notFoundMessage,
-              Markup.inlineKeyboard([
-                [Markup.button.callback("🔙 Main Menu", "insured_go_back")]
-              ])
-            );
-
-            console.log(`[${new Date().toISOString()}] ❌ User ${ctx.from.id} Trader ID ${traderId} NOT found in affiliate system`);
-          }
-        } catch (error) {
-          console.error(`[ERROR verifying trader with affiliate bot] ${error.message}`);
-
-          const errorMessage = `
-❌ Error during verification!
-
-We encountered an issue while verifying your Trader ID with @AffiliatePocketBot.
-
-This could be because:
-• Temporary bot connectivity issue
-• Invalid Trader ID format
-• Bot service temporarily unavailable
-
-Please try again in a moment.`;
-
-          await ctx.reply(
-            errorMessage,
-            Markup.inlineKeyboard([
-              [Markup.button.callback("🔙 Main Menu", "insured_go_back")]
-            ])
-          );
-        }
+        await queuePendingRegistration(ctx, traderId);
       }
+      return;
     } else {
       // Check if message is a trader ID number (for quick registration check)
       const messageText = ctx.message.text?.trim();
       if (messageText && /^\d+$/.test(messageText) && !messageText.startsWith('/')) {
         const traderId = messageText;
-
-        console.log(`[${new Date().toISOString()}] 🔍 Quick check - Verifying Trader ID ${traderId} with @AffiliatePocketBot`);
-        await ctx.reply("🔍 Verifying your trader ID with @AffiliatePocketBot...");
-        
-        try {
-          // Verify with affiliate bot
-          const affiliateVerification = await affiliateBotService.verifyTraderWithAffiliate(traderId);
-
-          if (affiliateVerification && affiliateVerification.registered) {
-            console.log(`[${new Date().toISOString()}] ✅ Trader ${traderId} verified through affiliate bot`);
-
-            // Show terms & conditions with mini app button
-            const termsMessage = `
-✅ Great! You are registered through our affiliate link!
-
-📋 Your Account Details:
-🆔 Trader ID: ${traderId}
-📅 Registration: ${affiliateVerification.regDate || 'N/A'}
-🌍 Country: ${affiliateVerification.country || 'N/A'}
-✔️ Verified: ${affiliateVerification.verified ? 'Yes ✅' : 'No ❌'}
-💰 Balance: ${affiliateVerification.balance || 'N/A'}
-💸 FTD: ${affiliateVerification.ftdAmount || 'N/A'}
-
-📋 TERMS & CONDITIONS
-
-Insurance Coverage Terms:
-✓ Coverage applies to total account loss only
-✓ Account must be verified via Pocket Option
-✓ Account created through our referral link
-✓ No withdrawals before loss event
-✓ No suspicious or prohibited trading activities
-✓ Premium: 10% of deposit amount
-✓ Coverage period: 3 months from activation
-
-⚠️ NOT Covered:
-✗ Partial account losses
-✗ After any withdrawal is made
-✗ Unverified accounts
-✗ Manual trading losses
-✗ Accounts not created through our link
-
-By proceeding, you agree to these terms.`;
-
-            // Check if MINI_APP_URL is properly set with HTTPS
-            const isValidHttpsUrl = MINI_APP_URL && MINI_APP_URL.startsWith('https://');
-
-            if (isValidHttpsUrl) {
-              await ctx.reply(
-                termsMessage,
-                Markup.inlineKeyboard([
-                  [Markup.button.webApp(
-                    "🛡️ Open Insurance App",
-                    `${MINI_APP_URL}?telegram_user_id=${ctx.from.id}&trader_id=${encodeURIComponent(traderId)}`
-                  )],
-                  [Markup.button.callback("🔙 Main Menu", "insured_go_back")]
-                ])
-              );
-            } else {
-              const fallbackMessage = `${termsMessage}
-
-⚠️ Setup Required:
-The mini app is currently being configured. Please contact support to proceed with your insurance.`;
-              
-              await ctx.reply(fallbackMessage);
-              console.warn(`[WARNING] MINI_APP_URL not configured. User ${ctx.from.id} cannot access mini app.`);
-            }
-
-            console.log(`[${new Date().toISOString()}] ✅ User ${ctx.from.id} verified - Trader ID ${traderId}`);
-          } else {
-            // User NOT found in affiliate system
-            const notFoundMessage = `
-❌ Sorry! You haven't created your account through our affiliate link!
-
-Trader ID: ${traderId}
-
-This Trader ID was not registered using our special affiliate link.
-
-To get insured, please:
-1️⃣ Create a new account via: learnwithtanishq.com/pocketoption
-2️⃣ Verify your account on Pocket Option
-3️⃣ Deposit minimum \$100
-4️⃣ Send back your new Trader ID
-
-⚠️ Important Points:
-• VPN must be OFF
-• Use web version (better experience)
-• Use a new email address
-• Use same documents for verification
-• Apply promo code: TANISHQ
-
-🍾 You can use bonus funds for deposits, but we count only your real deposit for insurance.
-
-After creating account through our link, send your new Trader ID here!`;
-
-            await ctx.reply(
-              notFoundMessage,
-              Markup.inlineKeyboard([
-                [Markup.button.callback("🏠 Main Menu", "insured_go_back")]
-              ])
-            );
-
-            console.log(`[${new Date().toISOString()}] ❌ User ${ctx.from.id} checked Trader ID ${traderId} - NOT registered through affiliate link`);
-          }
-        } catch (error) {
-          console.error(`[Error checking trader ID with affiliate bot] ${error.message}`);
-          
-          const errorMessage = `
-❌ Error during verification!
-
-We encountered an issue while verifying your Trader ID with @AffiliatePocketBot.
-
-This could be because:
-• Temporary bot connectivity issue
-• Invalid Trader ID format
-• Bot service temporarily unavailable
-
-Please try again in a moment.`;
-
-          await ctx.reply(
-            errorMessage,
-            Markup.inlineKeyboard([
-              [Markup.button.callback("🏠 Main Menu", "insured_go_back")]
-            ])
-          );
-        }
+        await queuePendingRegistration(ctx, traderId);
+        return;
       } else {
         // Regular message handling
         if (!ctx.message.text?.startsWith('/')) {
