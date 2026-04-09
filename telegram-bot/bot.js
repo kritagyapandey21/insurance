@@ -1591,38 +1591,36 @@ bot.action(/^deny_user_(.+)$/, async (ctx) => {
 
     // Send rejection message to the user
     const denialMessage = `
-❌ REGISTRATION NOT APPROVED
+  ❌ REGISTRATION NOT APPROVED
 
-Sorry, your account registration could not be verified at this time.
+  Sorry, your account registration could not be verified at this time.
 
-📋 Your Information:
-• Trader ID: ${userData.traderId}
-• Status: ❌ NOT VERIFIED
+  📋 Your Information:
+  * Trader ID: ${userData.traderId}
+  * Status: ❌ NOT VERIFIED
 
-⚠️ Possible Reasons:
-• Account not created through our affiliate link
-• Missing required documentation
-• Account verification incomplete
-• Policy violation detected
+  ⚠️ Possible Reasons:
+  * Account not created through our link
+  * You have not deposited the minimum amount on your trading account (100$)
 
-📝 Please Note:
-Your account must meet ALL requirements:
-✓ Created via our link: learnwithtanishq.com/pocketoption
-✓ Account verified on Pocket Option
-✓ Minimum $100 USDT deposit
-✓ All documents properly verified
+  📝 Please Note:
+  Your account must meet ALL requirements:
+  ✓ Created via our link: https://u3.shortink.io/register?utm_campaign=834817&utm_source=affiliate&utm_medium=sr&a=POY4xB1cswM8K7&al=1745844&ac=insurance&cid=949805&code=Tanishq
+  ✓ Account verified on Pocket Option
+  ✓ Minimum $100 USDT deposit
+  ✓ All documents properly verified
 
-🔄 Next Steps:
-If you believe this is an error, please try again with:
-1. A new account created through our link
-2. Verified documents
-3. Minimum $100 deposit
+  🔄 Next Steps:
+  If you believe this is an error, please try again with:
+  1. A new account created through our link
+  2. Verified documents
+  3. Minimum $100 deposit
 
-OR
+  OR
 
-Type /start and select "No, I'm Not Insured" to restart the process.
+  Type /start and select "No, I'm Not Insured" to restart the process.
 
-💬 Need help? Contact @Pocketshield0`;
+  💬 Need help? Contact our support team!`;
 
     await ctx.telegram.sendMessage(userId, denialMessage);
 
