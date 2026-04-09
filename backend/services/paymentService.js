@@ -103,7 +103,7 @@ class PaymentService {
                     
                     // Get amount from data (uint256)
                     const amountHex = log.data;
-                    const amount = parseInt(amountHex, 16) / 1e6; // USDT has 6 decimals on BSC (not 18!)
+                    const amount = parseInt(amountHex, 16) / 1e18; // Binance-Peg USDT on BSC (0x55d398...) uses 18 decimals
                     
                     console.log(`[BEP20 Verification] Found USDT transfer: to=${toAddress}, amount=${amount}`);
                     
