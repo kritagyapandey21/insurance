@@ -460,6 +460,9 @@ router.get("/users-list", async (req, res) => {
             insuranceFee: 1,
             paymentStatus: 1,
             coverageStatus: 1,
+            coverageStartDate: 1,
+            coverageEndDate: 1,
+            paymentVerifiedAt: 1,
             registeredAt: 1,
             createdAt: 1
         }).sort({ createdAt: -1 });

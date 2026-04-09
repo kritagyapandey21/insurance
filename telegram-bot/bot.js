@@ -672,7 +672,11 @@ bot.action('admin_stats', async (ctx) => {
               const premiumText = Number.isInteger(normalizedPremium)
                 ? normalizedPremium
                 : normalizedPremium.toFixed(2);
-              return `${idx + 1}. ${user.fullName}\n   💰 Premium: $${premiumText}\n   ID: ${user.traderId}`;
+              const insuranceDate = user.coverageStartDate || user.paymentVerifiedAt || user.createdAt;
+              const insuranceDateText = insuranceDate
+                ? new Date(insuranceDate).toLocaleDateString()
+                : "N/A";
+              return `${idx + 1}. ${user.fullName}\n   💰 Premium: $${premiumText}\n   ID: ${user.traderId}\n   📅 Insurance Date: ${insuranceDateText}`;
             })
             .join('\n\n');
         } else {
