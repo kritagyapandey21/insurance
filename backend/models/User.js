@@ -289,6 +289,19 @@ class User {
         return [{ total: toNumber(result.rows[0]?.total || 0) }];
     }
 
+    static async deleteExpiredCoverageUsers(referenceDate = new Date()) {
+        const result = await pool.query(
+            `
+            DELETE FROM users
+            WHERE coverage_end_date IS NOT NULL
+              AND coverage_end_date <= $1
+            `,
+            [referenceDate]
+        );
+
+        return result.rowCount || 0;
+    }
+
     async save() {
         const data = {
             full_name: this.fullName,

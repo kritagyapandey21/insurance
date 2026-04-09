@@ -57,6 +57,26 @@ async function initializeDatabase() {
     }
 }
 
+async function runExpiredCoverageCleanup() {
+    try {
+        const deletedCount = await User.deleteExpiredCoverageUsers();
+        if (deletedCount > 0) {
+            console.log(`[${new Date().toISOString()}] 🧹 Removed ${deletedCount} expired insurance record(s)`);
+        }
+    } catch (err) {
+        console.error(`[${new Date().toISOString()}] ❌ Expired coverage cleanup failed:`, err.message);
+    }
+}
+
+function startCoverageCleanupJob() {
+    const cleanupIntervalMinutes = Number(process.env.COVERAGE_CLEANUP_INTERVAL_MINUTES || 60);
+    const intervalMs = Math.max(5, cleanupIntervalMinutes) * 60 * 1000;
+
+    // Run once immediately on boot, then on schedule.
+    runExpiredCoverageCleanup();
+    setInterval(runExpiredCoverageCleanup, intervalMs);
+}
+
 // ============================================
 // ROUTES
 // ============================================
@@ -103,6 +123,7 @@ app.use((err, req, res, next) => {
 
 async function startServer() {
     await initializeDatabase();
+    startCoverageCleanupJob();
 
     app.listen(PORT, () => {
         console.log(`[${new Date().toISOString()}] 🚀 Server running on port ${PORT}`);

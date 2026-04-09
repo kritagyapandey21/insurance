@@ -11,6 +11,17 @@ const { validatePaymentRequest, validatePaymentVerification } = require("../midd
 
 const paymentService = new PaymentService();
 
+async function cleanupExpiredCoverageIfNeeded() {
+    try {
+        const deletedCount = await User.deleteExpiredCoverageUsers();
+        if (deletedCount > 0) {
+            console.log(`[Cleanup] Removed ${deletedCount} expired insurance record(s)`);
+        }
+    } catch (error) {
+        console.error(`[Cleanup Error] ${error.message}`);
+    }
+}
+
 /**
  * GET /api/payment-options
  * Get available payment methods and wallet addresses
@@ -237,6 +248,7 @@ router.post("/check-payment", validatePaymentRequest, async (req, res) => {
  */
 router.get("/user-status/:traderId", async (req, res) => {
     try {
+        await cleanupExpiredCoverageIfNeeded();
         const { traderId } = req.params;
 
         const user = await User.findOne({ traderId });
@@ -276,6 +288,7 @@ router.get("/user-status/:traderId", async (req, res) => {
  */
 router.post("/claim", async (req, res) => {
     try {
+        await cleanupExpiredCoverageIfNeeded();
         const { traderId, amount, description } = req.body;
 
         if (!traderId || !amount) {
@@ -328,6 +341,7 @@ router.post("/claim", async (req, res) => {
  */
 router.get("/stats", async (req, res) => {
     try {
+        await cleanupExpiredCoverageIfNeeded();
         const totalUsers = await User.countDocuments();
         const activeUsers = await User.countDocuments({ coverageStatus: "active" });
         const totalPremiums = await User.aggregate([
@@ -437,6 +451,7 @@ router.post("/create-user", async (req, res) => {
  */
 router.get("/users-list", async (req, res) => {
     try {
+        await cleanupExpiredCoverageIfNeeded();
         const users = await User.find({}, {
             fullName: 1,
             traderId: 1,
@@ -476,6 +491,7 @@ router.get("/users-list", async (req, res) => {
  */
 router.get("/user-by-telegram/:telegramId", async (req, res) => {
     try {
+        await cleanupExpiredCoverageIfNeeded();
         const { telegramId } = req.params;
 
         const user = await User.findOne({ telegramId: parseInt(telegramId) });
