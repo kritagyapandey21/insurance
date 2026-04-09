@@ -177,7 +177,7 @@ bot.help((ctx) => {
         `• Check if you're insured → /start\n` +
         `• Get new insurance → /start → Click "No"\n` +
         `• View policy → /status\n\n` +
-        `For inquiries, contact @Pocketshield0`
+        `For inquiries, contact @Pocketshieldsupport`
       );
     }
   } catch (error) {
@@ -358,7 +358,7 @@ bot.action('insured_check_status', async (ctx) => {
 ✗ Unverified accounts
 ✗ Manual trading losses
 
-Need help? Contact @Pocketshield0`;
+Need help? Contact @Pocketshieldsupport`;
 
       await ctx.reply(statusMessage);
       console.log(`[${new Date().toISOString()}] User ${ctx.from.id} checked insurance status - Found data for Trader ID: ${userData.traderId}`);
@@ -1620,7 +1620,7 @@ bot.action(/^deny_user_(.+)$/, async (ctx) => {
 
   Type /start and select "No, I'm Not Insured" to restart the process.
 
-  💬 Need help? Contact our support team!`;
+  💬 Need help? Contact @Pocketshieldsupport`;
 
     await ctx.telegram.sendMessage(userId, denialMessage);
 
