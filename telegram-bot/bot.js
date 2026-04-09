@@ -1336,17 +1336,17 @@ bot.action(/^deny_user_(.+)$/, async (ctx) => {
 
     // Send rejection message to the user
     const denialMessage = `
-  ❌ REGISTRATION NOT APPROVED
+  REGISTRATION NOT APPROVED
 
   Sorry, your account registration could not be verified at this time.
 
   📋 Your Information:
-  * Trader ID: ${userData.traderId}
-  * Status: ❌ NOT VERIFIED
+  ✓ Trader ID: ${userData.traderId}
+  ✓ Status: ❌ NOT VERIFIED
 
   ⚠️ Possible Reasons:
-  * Account not created through our link
-  * You have not deposited the minimum amount on your trading account (100$)
+  ✓ Account not created through our link
+  ✓ You have not deposited the minimum amount on your trading account (100$)
 
   📝 Please Note:
   Your account must meet ALL requirements:
