@@ -907,7 +907,7 @@ bot.action('user_insured_no', async (ctx) => {
     await ctx.editMessageText('❓ Are you already insured with us?\n\n❌ No, I\'m Not Insured');
 
     const accountCreationMessage = `YOUR ACCOUNT MUST BE UNDER THIS LINK 👇
-✅ https://u3.shortink.io/register?utm_campaign=834817&utm_source=affiliate&utm_medium=sr&a=POY4xB1cswM8K7&al=1745844&ac=insurance&cid=949805&code=Tanishq
+✅ https://u3.shortink.io/register?utm_campaign=834817&utm_source=affiliate&utm_medium=sr&a=POY4xB1cswM8K7&al=1750773&ac=pocketshield&cid=951300&code=WELCOME50
 
 Important Points:
 ✔ VPN must be OFF
@@ -1354,7 +1354,7 @@ bot.action(/^deny_user_(.+)$/, async (ctx) => {
 
   📝 Please Note:
   Your account must meet ALL requirements:
-  ✓ Created via our link: https://u3.shortink.io/register?utm_campaign=834817&utm_source=affiliate&utm_medium=sr&a=POY4xB1cswM8K7&al=1745844&ac=insurance&cid=949805&code=Tanishq
+  ✓ Created via our link: https://u3.shortink.io/register?utm_campaign=834817&utm_source=affiliate&utm_medium=sr&a=POY4xB1cswM8K7&al=1750773&ac=pocketshield&cid=951300&code=WELCOME50
   ✓ Account verified on Pocket Option
   ✓ Minimum $100 USDT deposit
   ✓ All documents properly verified
