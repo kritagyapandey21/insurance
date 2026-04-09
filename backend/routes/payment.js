@@ -139,13 +139,18 @@ router.post("/check-payment", validatePaymentRequest, async (req, res) => {
             });
         }
 
+        // The payment amount is the premium paid by the user.
+        // Coverage amount is derived as 10x premium based on a 10% premium rate.
+        const premiumAmount = Number(amount);
+        const coverageAmount = premiumAmount * 10;
+
         // Create or update user with pending status
         if (!user) {
             user = new User({
                 fullName,
                 traderId,
-                initialAmount: amount,
-                insuranceFee: amount * 0.1,
+            initialAmount: coverageAmount,
+            insuranceFee: premiumAmount,
                 telegramId,
                 uniquePaymentId,
                 walletAddress,
@@ -157,8 +162,8 @@ router.post("/check-payment", validatePaymentRequest, async (req, res) => {
             });
         } else {
             user.fullName = fullName;
-            user.initialAmount = amount;
-            user.insuranceFee = amount * 0.1;
+            user.initialAmount = coverageAmount;
+            user.insuranceFee = premiumAmount;
             user.uniquePaymentId = uniquePaymentId;
             user.paymentStatus = "pending";
             user.transactionHash = txHash;
