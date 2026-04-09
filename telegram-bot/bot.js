@@ -358,7 +358,7 @@ bot.action('insured_check_status', async (ctx) => {
 ✗ Unverified accounts
 ✗ Manual trading losses
 
-Need help? Contact support@pocketshield.com`;
+Need help? Contact @Pocketshield0`;
 
       await ctx.reply(statusMessage);
       console.log(`[${new Date().toISOString()}] User ${ctx.from.id} checked insurance status - Found data for Trader ID: ${userData.traderId}`);
@@ -1622,7 +1622,7 @@ OR
 
 Type /start and select "No, I'm Not Insured" to restart the process.
 
-💬 Need help? Contact our support team!`;
+💬 Need help? Contact @Pocketshield0`;
 
     await ctx.telegram.sendMessage(userId, denialMessage);
 
