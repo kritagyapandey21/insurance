@@ -29,6 +29,16 @@ class PaymentService {
         try {
             console.log(`[BEP20 Verification] Verifying transaction ${txHash} for amount ${expectedAmount} USDT`);
             
+            // Check if wallet is configured
+            if (!this.bep20UsdtWallet) {
+                console.error("[BEP20 Verification] Error: BEP20_USDT_WALLET environment variable not configured");
+                return { 
+                    success: false, 
+                    error: "BEP20 wallet not configured on server",
+                    debug: "Missing BEP20_USDT_WALLET environment variable"
+                };
+            }
+            
             // Demo mode for testing (check if tx hash starts with demo pattern)
             if (txHash.startsWith("demo-bep20") && process.env.NODE_ENV === "development") {
                 console.log("[BEP20 Verification] Using demo mode verification");
@@ -182,6 +192,16 @@ class PaymentService {
     async verifyTRC20Payment(txHash, expectedAmount) {
         try {
             console.log(`[TRC20 Verification] Verifying transaction ${txHash} for amount ${expectedAmount} USDT`);
+            
+            // Check if wallet is configured
+            if (!this.trc20UsdtWallet) {
+                console.error("[TRC20 Verification] Error: TRC20_USDT_WALLET environment variable not configured");
+                return { 
+                    success: false, 
+                    error: "TRC20 wallet not configured on server",
+                    debug: "Missing TRC20_USDT_WALLET environment variable"
+                };
+            }
             
             // Demo mode for testing (check if tx hash starts with demo pattern)
             if (txHash.startsWith("demo-trc20") && process.env.NODE_ENV === "development") {
@@ -450,18 +470,20 @@ class PaymentService {
      * Get payment wallet address for specified network
      */
     getPaymentWallet(network) {
-        switch(network.toLowerCase()) {
+        const networkType = network ? (typeof network === 'string' ? network.toLowerCase() : String(network).toLowerCase()) : 'default';
+        
+        switch(networkType) {
             case "bep20":
             case "bsc":
             case "binance":
-                return this.bep20UsdtWallet;
+                return this.bep20UsdtWallet || null;
             case "trc20":
             case "tron":
-                return this.trc20UsdtWallet;
+                return this.trc20UsdtWallet || null;
             case "ethereum":
             case "eth":
             default:
-                return this.insuranceWallet;
+                return this.insuranceWallet || null;
         }
     }
 
@@ -518,9 +540,12 @@ class PaymentService {
 
         // Remove 0x prefix if present
         const cleanHash = txHash.startsWith('0x') ? txHash.slice(2) : txHash;
+        
+        // Safely get network type, default to checking standard hex format
+        const networkType = network ? (typeof network === 'string' ? network.toLowerCase() : String(network).toLowerCase()) : 'default';
 
         // Check length and format
-        switch(network.toLowerCase()) {
+        switch(networkType) {
             case 'bep20':
             case 'bsc':
             case 'ethereum':
