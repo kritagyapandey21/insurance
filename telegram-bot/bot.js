@@ -400,7 +400,7 @@ bot.action('insured_check_status', async (ctx) => {
 💰 Insurance Amount:
 • Initial Deposit: $${userData.initialAmount} USDT
 • Premium Paid: $${userData.insuranceFee} USDT (10%)
-• Coverage: 40% of initial deposit
+• Coverage Amount: $${userData.initialAmount} USDT (100% coverage)
 
 📅 Coverage Period:
 • Activated: ${activationDate}
@@ -438,7 +438,7 @@ Getting insured is easy:
 5️⃣ Done! You're covered for 3 months
 
 Benefits:
-✓ 40% coverage on total account loss
+✓ 100% coverage on total account loss
 ✓ Fast claim processing
 ✓ 24/7 support
 ✓ Covers only total loss before withdrawals`;
@@ -468,7 +468,7 @@ Getting insured is easy:
 5️⃣ Done! You're covered for 3 months
 
 Benefits:
-✓ 40% coverage on total account loss
+✓ 100% coverage on total account loss
 ✓ Fast claim processing
 ✓ 24/7 support
 ✓ Covers only total loss before withdrawals`;
