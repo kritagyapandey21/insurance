@@ -1001,8 +1001,8 @@ Status: Ready to send (not implemented yet - add database integration)`;
           if (verifyResponse.data && verifyResponse.data.success) {
             const userData = verifyResponse.data.data;
             
-            // STEP 1: Validate user has active coverage
-            if (userData.traderId === traderIdClaim && userData.paymentStatus === 'confirmed' && userData.coverageStatus === 'active') {
+            // STEP 1: Validate trader ID matches (let admin verify coverage)
+            if (userData.traderId === traderIdClaim) {
               
               // STEP 2: Store claim data temporarily (waiting for admin approval)
               global.claimData = global.claimData || {};
