@@ -995,139 +995,87 @@ Status: Ready to send (not implemented yet - add database integration)`;
       
       if (traderIdClaim && traderIdClaim.length > 0 && !traderIdClaim.startsWith('/')) {
         try {
-          // Verify user by telegram ID, then check provided trader ID.
+          // Get user info
           const verifyResponse = await axios.get(`${BACKEND_URL}/api/user-by-telegram/${ctx.from.id}`);
           
           if (verifyResponse.data && verifyResponse.data.success) {
             const userData = verifyResponse.data.data;
             
-            // STEP 1: Validate trader ID matches (let admin verify coverage)
-            if (userData.traderId === traderIdClaim) {
-              
-              // STEP 2: Store claim data temporarily (waiting for admin approval)
-              global.claimData = global.claimData || {};
-              global.claimData[ctx.from.id] = {
-                userId: ctx.from.id,
-                firstName: ctx.from.first_name,
-                lastName: ctx.from.last_name || '',
-                username: ctx.from.username || 'N/A',
-                traderId: traderIdClaim,
-                fullName: userData.fullName,
-                telegramId: ctx.from.id,
-                initialAmount: userData.initialAmount,
-                insuranceFee: userData.insuranceFee,
-                coverageEndDate: userData.coverageEndDate,
-                status: 'pending_admin_review',
-                submittedAt: new Date().toLocaleString()
-              };
+            // Store claim data and send to admin immediately (no validation)
+            global.claimData = global.claimData || {};
+            global.claimData[ctx.from.id] = {
+              userId: ctx.from.id,
+              firstName: ctx.from.first_name,
+              lastName: ctx.from.last_name || '',
+              username: ctx.from.username || 'N/A',
+              traderId: traderIdClaim,
+              fullName: userData.fullName,
+              telegramId: ctx.from.id,
+              initialAmount: userData.initialAmount,
+              insuranceFee: userData.insuranceFee,
+              coverageEndDate: userData.coverageEndDate,
+              status: 'pending_admin_review',
+              submittedAt: new Date().toLocaleString()
+            };
 
-              delete global.usersAwaitingClaimTrader[ctx.from.id];
+            delete global.usersAwaitingClaimTrader[ctx.from.id];
 
-              // STEP 3: Tell user we're sending to admin
-              await ctx.reply(
-                `✅ Trader ID Received!\n\n` +
-                `🆔 Trader ID: ${traderIdClaim}\n` +
-                `💰 Coverage Amount: $${userData.initialAmount}\n` +
-                `📋 Premium Paid: $${userData.insuranceFee}\n\n` +
-                `⏳ Sending to admin for verification...\n` +
-                `We will notify you once admin reviews your claim.`
-              );
+            // Tell user claim is being sent to admin
+            await ctx.reply(
+              `✅ Claim Submitted!\n\n` +
+              `🆔 Trader ID: ${traderIdClaim}\n` +
+              `💰 Coverage Amount: $${userData.initialAmount}\n` +
+              `📋 Premium Paid: $${userData.insuranceFee}\n\n` +
+              `⏳ Sending to admin for review...\n` +
+              `You will be notified once admin decides.`
+            );
 
-              // STEP 4: Send to admin for APPROVAL/REJECTION
-              const adminClaimNotification = `
-🔔 NEW CLAIM VERIFICATION REQUEST
+            // Send to admin for APPROVAL/REJECTION
+            const adminClaimNotification = `
+🔔 NEW INSURANCE CLAIM
 
-👤 User Information:
-• Name: ${userData.fullName}
-• Telegram ID: ${ctx.from.id}
-• Username: @${ctx.from.username || 'N/A'}
+👤 User: ${userData.fullName}
+📱 Telegram ID: ${ctx.from.id}
+🆔 Trader ID: ${traderIdClaim}
 
-💼 Claim Details:
-• Trader ID: ${traderIdClaim}
-• Coverage Amount: $${userData.initialAmount}
-• Premium Paid: $${userData.insuranceFee}
-• Payment Status: ✅ ${userData.paymentStatus}
-• Coverage Status: ✅ ${userData.coverageStatus}
-• Coverage Valid Until: ${new Date(userData.coverageEndDate).toLocaleDateString()}
+💼 Insurance Info:
+• Amount: $${userData.initialAmount}
+• Premium: $${userData.insuranceFee}
 
-📅 Submitted: ${global.claimData[ctx.from.id].submittedAt}
+⏰ Submitted: ${global.claimData[ctx.from.id].submittedAt}
 
-👉 Please review and decide:
-`;
+Approve or Reject?`;
 
               await ctx.telegram.sendMessage(
                 ADMIN_ID,
                 adminClaimNotification,
                 Markup.inlineKeyboard([
                   [
-                    Markup.button.callback("✅ APPROVE CLAIM", `admin_approve_claim_${ctx.from.id}`),
-                    Markup.button.callback("❌ REJECT CLAIM", `admin_reject_claim_${ctx.from.id}`)
+                    Markup.button.callback("✅ APPROVE", `admin_approve_claim_${ctx.from.id}`),
+                    Markup.button.callback("❌ REJECT", `admin_reject_claim_${ctx.from.id}`)
                   ]
                 ])
               );
 
-              console.log(`[${new Date().toISOString()}] 📋 Claim sent to admin for approval: User ${ctx.from.id}, Trader ${traderIdClaim}`);
+              console.log(`[${new Date().toISOString()}] 📋 Claim sent to admin: User ${ctx.from.id}, Trader ${traderIdClaim}`);
               
-            } else {
-              delete global.usersAwaitingClaimTrader[ctx.from.id];
-              
-              const notInsuredMessage = `
-❌ You are not insured!
-
-The Trader ID you provided does not match your active policy or coverage is inactive.
-
-Details:
-• Your Trader ID: ${userData.traderId}
-• Provided ID: ${traderIdClaim}
-• Payment Status: ${userData.paymentStatus}
-• Coverage Status: ${userData.coverageStatus}
-
-Please use the Trader ID that was used during your insurance signup.`;
-
-              await ctx.reply(
-                notInsuredMessage,
-                Markup.inlineKeyboard([
-                  [Markup.button.callback("🔙 Go Back to Main Menu", "insured_go_back")]
-                ])
-              );
-              console.log(`[${new Date().toISOString()}] ❌ User ${ctx.from.id} claim rejected - validation failed: ${userData.traderId} vs ${traderIdClaim}`);
-            }
           } else {
             delete global.usersAwaitingClaimTrader[ctx.from.id];
-            
-            const notFoundMessage = `
-❌ You are not insured!
-
-No insurance record found for your account.
-
-This could mean:
-• You haven't set up insurance yet
-• Your insurance has expired
-• Your insurance has expired
-
-Thank you!`;
-
             await ctx.reply(
-              notFoundMessage,
+              `❌ Error: User not found.\n\nPlease try again or contact support.`,
               Markup.inlineKeyboard([
-                [Markup.button.callback("🔙 Go Back to Main Menu", "insured_go_back")]
+                [Markup.button.callback("🔙 Go Back", "insured_go_back")]
               ])
             );
-            console.log(`[${new Date().toISOString()}] User ${ctx.from.id} claim failed - Trader ID not found: ${traderIdClaim}`);
           }
         } catch (error) {
-          console.error(`[Error verifying trader ID] ${error.message}`);
+          console.error(`[Error in claim submission] ${error.message}`);
           delete global.usersAwaitingClaimTrader[ctx.from.id];
           
-          const errorMessage = `
-❌ An error occurred during verification.
-
-Please try again or contact support.`;
-
           await ctx.reply(
-            errorMessage,
+            `❌ An error occurred.\n\nPlease try again or contact support.`,
             Markup.inlineKeyboard([
-              [Markup.button.callback("🔙 Go Back to Main Menu", "insured_go_back")]
+              [Markup.button.callback("🔙 Go Back", "insured_go_back")]
             ])
           );
         }
