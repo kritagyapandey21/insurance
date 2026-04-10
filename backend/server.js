@@ -25,6 +25,9 @@ const PORT = process.env.PORT || 5000;
 // Security
 app.use(helmet());
 
+// Trust proxy to allow rate limiting to work correctly behind a reverse proxy
+app.set('trust proxy', 1);
+
 // CORS
 app.use(cors());
 
