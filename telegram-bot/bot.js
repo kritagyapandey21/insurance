@@ -1639,7 +1639,7 @@ bot.action(/^admin_approve_claim_(.+)$/, async (ctx) => {
 
 💳 NEXT STEP: PAYMENT
 
-Please select your preferred payment network for the payout:`,
+Please select your preferred USDT payment network for the payout:`,
           Markup.inlineKeyboard([
             [
               Markup.button.callback("🔶 BEP20 (BSC)", "claim_network_bep20"),
@@ -1702,7 +1702,7 @@ Please select your preferred payment network for the payout:`,
 
 💳 NEXT STEP: PAYMENT
 
-Please select your preferred payment network for the payout:`,
+Please select your preferred USDT payment network for the payout:`,
         Markup.inlineKeyboard([
           [
             Markup.button.callback("🔶 BEP20 (BSC)", "claim_network_bep20"),
