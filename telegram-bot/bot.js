@@ -1603,7 +1603,7 @@ bot.action(/^admin_approve_claim_(.+)$/, async (ctx) => {
         const savedClaim = saveResponse.data.data;
         
         // Update local claim data with backend response
-        claimData.status = 'approved';
+        claimData.status = 'approved_waiting_network';
         claimData.claimId = savedClaim.claimId;
         claimData.approvedAt = new Date().toLocaleString();
         claimData.approvedBy = ctx.from.id;
@@ -1666,7 +1666,7 @@ Please select your preferred payment network for the payout:`,
       });
       
       // Still mark as approved locally even if backend fails
-      claimData.status = 'approved';
+      claimData.status = 'approved_waiting_network';
       claimData.approvedAt = new Date().toLocaleString();
       claimData.approvedBy = ctx.from.id;
       global.claimData[userId] = claimData;
