@@ -45,6 +45,19 @@ services:
       - ./backend:/app
       - /app/node_modules
 
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: crypto-insurance-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./mini-app:/usr/share/nginx/html
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - backend
+    networks:
+      - insurance-network
+
 volumes:
   postgres_data:
 
