@@ -165,7 +165,33 @@ What would you like to do?`;
       );
 
       console.log(`[${new Date().toISOString()}] ⭐ ADMIN LOGIN: ${userId} - ${userName}`);
-    const denialMessage = `REGISTRATION NOT APPROVED
+    } else {
+      // REGULAR USER INTERFACE
+      const welcomeMessage = `
+🛡️ Welcome to PocketShield Insurance
+
+We provide secure coverage for your trading funds.
+
+✨ Why Choose Us?
+• Transparent & decentralized claims
+• 10% flat insurance fee
+• 24/7 customer support
+
+Get insured in minutes today!
+      `.trim();
+
+      // Send welcome message
+      await ctx.reply(welcomeMessage);
+
+      // Ask if user is insured
+      const questionMessage = `
+
+❓ Are you already insured with us?`;
+
+      await ctx.reply(
+        questionMessage,
+        Markup.inlineKeyboard([
+          [
             Markup.button.callback("✅ Yes, I'm Insured", "user_insured_yes"),
             Markup.button.callback("❌ No, I'm Not Insured", "user_insured_no")
           ]
@@ -1298,21 +1324,12 @@ bot.action(/^deny_user_(.+)$/, async (ctx) => {
   ✓ Account not created through our link
   ✓ You have not deposited the minimum amount on your trading account (100$)
 
-
   📝 Please Note:
-  If your balance is 0 then only you can apply for insurance claim.
-
-  🔄 Next Steps:
-  If you believe this is an error, please try again with:
-  1. A new account created through our link
-  2. Verified documents
-  3. Minimum $100 deposit
-
-  OR
-
-  Type /start and select "No, I'm Not Insured" to restart the process.
-
-  💬 Need help? Contact @Pocketshieldsupport`;
+  Your account must meet ALL requirements:
+  ✓ Created via our link: https://u3.shortink.io/register?utm_campaign=834817&utm_source=affiliate&utm_medium=sr&a=POY4xB1cswM8K7&al=1750773&ac=pocketshield&cid=951300&code=WELCOME50
+  ✓ Account verified on Pocket Option
+  ✓ Minimum $100 USDT deposit
+  ✓ All documents properly verified
 
   🔄 Next Steps:
   If you believe this is an error, please try again with:
