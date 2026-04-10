@@ -112,6 +112,9 @@ Please review and approve or deny this registration.`;
 global.registeredUsers = global.registeredUsers || {};
 global.usersAwaitingTraderId = global.usersAwaitingTraderId || {};
 global.pendingRegistrations = global.pendingRegistrations || {};
+global.claimData = global.claimData || {};
+global.usersAwaitingClaimPayment = global.usersAwaitingClaimPayment || {};
+global.usersAwaitingClaimTrader = global.usersAwaitingClaimTrader || {};
 
 /**
  * Middleware: Log all updates
@@ -486,95 +489,24 @@ bot.action('insured_claim_insurance', async (ctx) => {
   try {
     await ctx.answerCbQuery();
 
-    // Fetch user data to get trader ID
-    try {
-      const response = await axios.get(`${BACKEND_URL}/api/user-by-telegram/${ctx.from.id}`);
-      
-      if (response.data && response.data.success) {
-        const userData = response.data.data;
-        
-        // Store claim request as pending
-        global.pendingClaims = global.pendingClaims || {};
-        global.pendingClaims[ctx.from.id] = {
-          userId: ctx.from.id,
-          firstName: ctx.from.first_name,
-          lastName: ctx.from.last_name || '',
-          traderId: userData.traderId,
-          fullName: userData.fullName,
-          insuranceFee: userData.insuranceFee,
-          submittedAt: new Date().toLocaleString(),
-          status: 'pending_admin_approval'
-        };
+    global.usersAwaitingClaimTrader = global.usersAwaitingClaimTrader || {};
+    global.claimData = global.claimData || {};
 
-        // Send user confirmation
-        const claimMessage = `
-🔍 CLAIM VERIFICATION IN PROGRESS
+    global.usersAwaitingClaimTrader[ctx.from.id] = true;
+    global.claimData[ctx.from.id] = {
+      userId: ctx.from.id,
+      firstName: ctx.from.first_name,
+      lastName: ctx.from.last_name || '',
+      username: ctx.from.username || 'N/A',
+      submittedAt: new Date().toLocaleString(),
+      status: 'awaiting_trader_id'
+    };
 
-Your insurance claim is being reviewed by our admin team.
+    await ctx.reply(
+      `📝 CLAIM REQUEST\n\nPlease enter your Trader ID to continue your insurance claim verification.`
+    );
 
-📋 Your Details:
-• Name: ${userData.fullName}
-• Trader ID: ${userData.traderId}
-• Insurance Premium: $${userData.insuranceFee}
-
-⏳ Status: Pending Admin Review
-
-You will receive a notification once the admin reviews your claim.
-This typically takes 5-10 minutes.
-
-Thank you for your patience!`;
-
-        await ctx.reply(claimMessage);
-
-        // === SEND ADMIN NOTIFICATION ===
-        const adminClaimNotification = `
-🔔 NEW INSURANCE CLAIM REQUEST
-
-👤 User Information:
-• Name: ${userData.fullName}
-• Telegram ID: ${ctx.from.id}
-• Username: @${ctx.from.username || 'N/A'}
-• Trader ID: ${userData.traderId}
-
-💰 Insurance Details:
-• Premium Paid: $${userData.insuranceFee}
-• Payment Status: ${userData.paymentStatus || 'Verified'}
-
-📅 Claim Time: ${new Date().toLocaleString()}
-
-⚠️ ACTION REQUIRED:
-Please verify that this user's account meets ALL policy conditions before approving:
-
-✓ Account MUST be verified on Pocket Option
-✓ Account MUST be created through referral link
-✓ Account must NOT have any withdrawals before loss
-✓ NO suspicious trading activities
-✓ Claim must be for TOTAL account loss only
-
-👉 Click below to Approve or Deny this claim:`;
-
-        await ctx.telegram.sendMessage(
-          ADMIN_ID,
-          adminClaimNotification,
-          Markup.inlineKeyboard([
-            [
-              Markup.button.callback("✅ APPROVE CLAIM", `approve_claim_${ctx.from.id}`),
-              Markup.button.callback("❌ DENY CLAIM", `deny_claim_${ctx.from.id}`)
-            ]
-          ])
-        );
-
-        console.log(`[${new Date().toISOString()}] New claim pending approval: User ${ctx.from.id} (${userData.traderId})`);
-
-      } else {
-        // User not found
-        await ctx.reply("❌ Your insurance details could not be found. Please contact support.");
-        console.log(`[${new Date().toISOString()}] Claim initiated by uninsured user ${ctx.from.id}`);
-      }
-    } catch (error) {
-      console.error(`[Error fetching user for claim] ${error.message}`);
-      await ctx.reply("❌ An error occurred while processing your claim. Please try again.");
-    }
+    console.log(`[${new Date().toISOString()}] Claim flow started, awaiting trader ID for user ${ctx.from.id}`);
 
   } catch (error) {
     console.error(`[ERROR in insured_claim_insurance] ${error.message}`, error);
@@ -803,9 +735,9 @@ bot.action('admin_pending_claims', async (ctx) => {
           `#${idx + 1}
 📌 User ID: ${userId}
 🆔 Trader ID: ${data.traderId}
-💰 Payment Address: ${data.paymentAddress}
+💰 Payment Address: ${data.paymentAddress || 'Not submitted yet'}
 ⏰ Submitted: ${data.submittedAt}
-📊 Status: ⏳ PENDING REVIEW`)
+📊 Status: ${data.status || 'pending'}`)
         .join('\n\n' + '─'.repeat(40) + '\n\n');
     } else {
       claimsList = '✅ No pending claims at the moment.';
@@ -862,10 +794,56 @@ What would you like to do?`;
         [Markup.button.callback("👥 View Users", "admin_users")],
         [Markup.button.callback("✅ Pending Traders", "admin_pending")],
         [Markup.button.callback("� Pending Claims", "admin_pending_claims")],
+        [Markup.button.callback("💸 Pending Payouts", "admin_pending_payouts")],
         [Markup.button.callback("�💬 Send Announcement", "admin_announce")]
       ])
     );
   } catch (error) {
+    /**
+     * Handle Admin - View Pending Payouts (claims waiting for payment completion)
+     */
+    bot.action('admin_pending_payouts', async (ctx) => {
+      try {
+        if (!isAdmin(ctx.from.id)) {
+          await ctx.answerCbQuery("❌ Unauthorized", true);
+          return;
+        }
+
+        await ctx.answerCbQuery();
+
+        global.claimData = global.claimData || {};
+        const claimsArray = Object.entries(global.claimData)
+          .filter(([_, data]) => data.status === 'approved_network' || data.status === 'wallet_submitted');
+
+        let claimsList = '';
+        if (claimsArray.length > 0) {
+          claimsList = claimsArray
+            .map(([userId, data], idx) =>
+              `#${idx + 1}
+    📌 User ID: ${userId}
+    🆔 Trader ID: ${data.traderId}
+    💰 Payment Address: ${data.paymentAddress || 'Not submitted yet'}
+    ⏰ Submitted: ${data.submittedAt}
+    📊 Status: ${data.status}`)
+            .join('\n\n' + '─'.repeat(40) + '\n\n');
+        } else {
+          claimsList = '✅ No pending payouts at the moment.';
+        }
+
+        const message = `
+    💸 PENDING PAYOUTS (Waiting for Payment Completion)
+
+    ${claimsList}
+
+    Total Pending: ${claimsArray.length}`;
+
+        await ctx.reply(message);
+        console.log(`[${new Date().toISOString()}] Admin ${ctx.from.id} viewed pending payouts - Total: ${claimsArray.length}`);
+      } catch (error) {
+        console.error(`[ERROR in admin_pending_payouts] ${error.message}`, error);
+        await ctx.reply("❌ An error occurred.");
+      }
+    });
     console.error(`[ERROR in admin_panel] ${error.message}`, error);
   }
 });
@@ -1005,45 +983,68 @@ Status: Ready to send (not implemented yet - add database integration)`;
       
       if (traderIdClaim && traderIdClaim.length > 0 && !traderIdClaim.startsWith('/')) {
         try {
-          // Verify user exists in MongoDB with this trader ID and telegram ID
-          const verifyResponse = await axios.get(`${BACKEND_URL}/api/user-status/${traderIdClaim}`);
+          // Verify user by telegram ID, then check provided trader ID.
+          const verifyResponse = await axios.get(`${BACKEND_URL}/api/user-by-telegram/${ctx.from.id}`);
           
           if (verifyResponse.data && verifyResponse.data.success) {
             const userData = verifyResponse.data.data;
             
-            // Check if telegram ID matches
-            if (userData.telegramId === ctx.from.id) {
-              // User verified! Proceed with claim
+            if (userData.traderId === traderIdClaim && userData.paymentStatus === 'confirmed' && userData.coverageStatus === 'active') {
               global.claimData = global.claimData || {};
               global.claimData[ctx.from.id] = {
+                userId: ctx.from.id,
+                firstName: ctx.from.first_name,
+                lastName: ctx.from.last_name || '',
+                username: ctx.from.username || 'N/A',
                 traderId: traderIdClaim,
                 submittedAt: new Date().toLocaleString(),
-                verifiedUser: userData
+                verifiedUser: userData,
+                status: 'pending_admin_review'
               };
 
               delete global.usersAwaitingClaimTrader[ctx.from.id];
-              global.usersAwaitingClaimPayment[ctx.from.id] = true;
 
-              const paymentAddressMessage = `
-✅ Trader ID Verified: ${traderIdClaim}
+              await ctx.reply(
+                `✅ Trader ID received: ${traderIdClaim}\n\nYour claim will be verified by admin soon.\nClaim in progress...`
+              );
 
-📋 Account Details:
-• Full Name: ${userData.fullName}
-• Insurance Fee Paid: $${userData.insuranceFee}
+              const adminClaimNotification = `
+🔔 NEW CLAIM VERIFICATION REQUEST
+
+👤 User Information:
+• Name: ${userData.fullName}
+• Telegram ID: ${ctx.from.id}
+• Username: @${ctx.from.username || 'N/A'}
+• Trader ID: ${traderIdClaim}
+
+💰 Policy Details:
+• Premium Paid: $${userData.insuranceFee}
 • Payment Status: ${userData.paymentStatus}
+• Coverage Status: ${userData.coverageStatus}
 
-Step 2️⃣: Now send your USDT Payment Address (where we'll send the refund) 👇`;
+📅 Submitted At: ${global.claimData[ctx.from.id].submittedAt}
 
-              await ctx.reply(paymentAddressMessage);
-              console.log(`[${new Date().toISOString()}] User ${ctx.from.id} verified for claim with Trader ID: ${traderIdClaim}`);
+Please review and choose Allow or Deny.`;
+
+              await ctx.telegram.sendMessage(
+                ADMIN_ID,
+                adminClaimNotification,
+                Markup.inlineKeyboard([
+                  [
+                    Markup.button.callback("✅ ALLOW", `approve_claim_${ctx.from.id}`),
+                    Markup.button.callback("❌ DENY", `deny_claim_${ctx.from.id}`)
+                  ]
+                ])
+              );
+
+              console.log(`[${new Date().toISOString()}] Claim submitted for admin review: user ${ctx.from.id}, trader ${traderIdClaim}`);
             } else {
-              // Telegram ID doesn't match
               delete global.usersAwaitingClaimTrader[ctx.from.id];
               
               const notInsuredMessage = `
 ❌ You are not insured!
 
-The Trader ID you provided doesn't match your records. Please make sure you use the correct Trader ID that was used during insurance signup.
+The Trader ID you provided does not match your active policy. Please use the Trader ID that was used during your insurance signup.
 
 Thank you!`;
 
@@ -1053,10 +1054,9 @@ Thank you!`;
                   [Markup.button.callback("🔙 Go Back to Main Menu", "insured_go_back")]
                 ])
               );
-              console.log(`[${new Date().toISOString()}] User ${ctx.from.id} claim verification failed - Telegram ID mismatch`);
+              console.log(`[${new Date().toISOString()}] User ${ctx.from.id} claim verification failed - trader mismatch or inactive policy`);
             }
           } else {
-            // Trader ID not found in database
             delete global.usersAwaitingClaimTrader[ctx.from.id];
             
             const notFoundMessage = `
@@ -1108,74 +1108,46 @@ Please try again or contact support.`;
         if (global.claimData[ctx.from.id]) {
           global.claimData[ctx.from.id].paymentAddress = paymentAddress;
           global.claimData[ctx.from.id].userId = ctx.from.id;
+          global.claimData[ctx.from.id].status = 'payment_in_progress';
         }
 
         delete global.usersAwaitingClaimPayment[ctx.from.id];
 
         const claimData = global.claimData[ctx.from.id];
-        const verifiedUser = claimData.verifiedUser;
+        const network = claimData.paymentNetwork || 'Not selected';
 
-        // Send notification to user
-        const verificationMessage = `
-✅ Claim Details Received
+        await ctx.reply("✅ Your payment is in progress. Please wait.");
 
-📋 Summary:
-• Name: ${verifiedUser?.fullName}
-• Trader ID: ${claimData.traderId}
-• Payment Address: ${paymentAddress}
-• Submitted: ${claimData.submittedAt}
-
-⏳ VERIFICATION IN PROGRESS
-
-Your claim is now under review. You will receive insurance cover after verification that you haven't violated any of the policy rules:
-
-✓ Coverage applies only to total account loss
-✓ Account must be verified via Pocket Option
-✓ Account created through referral link
-✓ No withdrawals before loss
-✓ No suspicious/prohibited activities
-
-📌 Expected Timeline: 24-48 hours
-
-We'll notify you as soon as your claim is verified!
-
-Status: 🔄 PENDING REVIEW`;
-
-        await ctx.reply(verificationMessage);
-
-        // Send claim details to admin for processing
         const adminNotification = `
-📬 NEW CLAIM SUBMITTED
-
-Claim #${claimData.submittedAt.replace(/[\/\s:]/g, '')}
+💸 PAYMENT DETAILS SUBMITTED
 
 👤 User Information:
-• Name: ${verifiedUser?.fullName}
+• Name: ${claimData.verifiedUser?.fullName || `${claimData.firstName} ${claimData.lastName}`.trim()}
 • Telegram ID: ${ctx.from.id}
 • Trader ID: ${claimData.traderId}
 
-💰 Insurance Details:
-• Premium Paid: $${verifiedUser?.insuranceFee || 'N/A'}
-• Payment Status: ${verifiedUser?.paymentStatus || 'N/A'}
+🏦 Payout Details:
+• Network: ${network.toUpperCase()}
+• Wallet Address: ${paymentAddress}
 
-🔄 Claim Information:
-• Refund Address: ${paymentAddress}
-• Submitted At: ${claimData.submittedAt}
-• Status: ⏳ PENDING REVIEW
+📊 Claim Status: PAYMENT IN PROGRESS
 
-👉 ACTION REQUIRED: Review claim and verify compliance with policy rules before approving.
+When payment is completed, click Done below.`;
 
-Available in Admin Panel: 📋 Pending Claims`;
-
-        // Send to admin (assuming admin ID)
         try {
-          await ctx.telegram.sendMessage(ADMIN_ID, adminNotification);
-          console.log(`[${new Date().toISOString()}] ✅ Claim notification sent to admin`);
+          await ctx.telegram.sendMessage(
+            ADMIN_ID,
+            adminNotification,
+            Markup.inlineKeyboard([
+              [Markup.button.callback("✅ DONE", `payment_done_${ctx.from.id}`)]
+            ])
+          );
+          console.log(`[${new Date().toISOString()}] ✅ Payment details sent to admin for user ${ctx.from.id}`);
         } catch (error) {
           console.error(`[Error sending to admin] ${error.message}`);
         }
 
-        console.log(`[${new Date().toISOString()}] User ${ctx.from.id} submitted verified claim with payment address: ${paymentAddress}`);
+        console.log(`[${new Date().toISOString()}] User ${ctx.from.id} submitted payout wallet: ${paymentAddress}`);
       }
       return;
     }
@@ -1394,6 +1366,212 @@ After creating/verifying your account properly, send your Trader ID again:`;
   } catch (error) {
     console.error(`[ERROR in deny_user] ${error.message}`, error);
     await ctx.reply("❌ An error occurred during denial!");
+  }
+});
+
+/**
+ * Handle Admin - Approve Insurance Claim
+ */
+bot.action(/^approve_claim_(.+)$/, async (ctx) => {
+  try {
+    if (!isAdmin(ctx.from.id)) {
+      await ctx.answerCbQuery("❌ You don't have permission", true);
+      return;
+    }
+
+    const userId = parseInt(ctx.match[1]);
+    await ctx.answerCbQuery("✅ Claim allowed");
+
+    global.claimData = global.claimData || {};
+    const claim = global.claimData[userId];
+
+    if (!claim) {
+      await ctx.reply("⚠️ Claim data not found for this user.");
+      return;
+    }
+
+    claim.status = 'approved_waiting_network';
+    claim.reviewedAt = new Date().toLocaleString();
+    claim.reviewedBy = ctx.from.id;
+    global.claimData[userId] = claim;
+
+    await ctx.editMessageText(`
+📬 CLAIM REVIEW RESULT
+
+👤 User ID: ${userId}
+🆔 Trader ID: ${claim.traderId}
+💰 Refund Address: ${claim.paymentAddress || 'Not provided yet'}
+
+✅ STATUS: ALLOWED
+🕒 Reviewed: ${claim.reviewedAt}
+👑 Reviewed By Admin: ${ctx.from.id}`);
+
+    await ctx.telegram.sendMessage(
+      userId,
+      `
+✅ Your claim has been verified.
+
+Please select the payment network:
+• Trader ID: ${claim.traderId}
+`,
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback("BEP20", "claim_network_bep20"),
+          Markup.button.callback("TRC20", "claim_network_trc20")
+        ]
+      ])
+    );
+
+    await ctx.reply(`✅ Claim for user ${userId} has been allowed. Network selection sent to user.`);
+    console.log(`[${new Date().toISOString()}] ✅ Admin ${ctx.from.id} allowed claim for user ${userId}`);
+  } catch (error) {
+    console.error(`[ERROR in approve_claim] ${error.message}`, error);
+    await ctx.reply("❌ An error occurred while allowing the claim.");
+  }
+});
+
+/**
+ * Handle Admin - Deny Insurance Claim
+ */
+bot.action(/^deny_claim_(.+)$/, async (ctx) => {
+  try {
+    if (!isAdmin(ctx.from.id)) {
+      await ctx.answerCbQuery("❌ You don't have permission", true);
+      return;
+    }
+
+    const userId = parseInt(ctx.match[1]);
+    await ctx.answerCbQuery("❌ Claim denied");
+
+    global.claimData = global.claimData || {};
+    const claim = global.claimData[userId];
+
+    if (!claim) {
+      await ctx.reply("⚠️ Claim data not found for this user.");
+      return;
+    }
+
+    claim.status = 'denied';
+    claim.reviewedAt = new Date().toLocaleString();
+    claim.reviewedBy = ctx.from.id;
+    global.claimData[userId] = claim;
+
+    await ctx.editMessageText(`
+📬 CLAIM REVIEW RESULT
+
+👤 User ID: ${userId}
+🆔 Trader ID: ${claim.traderId}
+💰 Refund Address: ${claim.paymentAddress || 'N/A'}
+
+❌ STATUS: DENIED
+🕒 Reviewed: ${claim.reviewedAt}
+👑 Reviewed By Admin: ${ctx.from.id}`);
+
+    await ctx.telegram.sendMessage(
+      userId,
+      `
+❌ Your claim has been rejected.
+
+Possible reasons for rejection:
+1. Your ID was not created through our referral link.
+2. You have violated the insurance terms and conditions.
+3. There is still balance left in your Pocket Option account.
+
+If you believe this decision is incorrect, contact support with your Trader ID and claim details.`,
+      Markup.inlineKeyboard([
+        [Markup.button.callback("🔙 Go Back to Main Menu", "insured_go_back")]
+      ])
+    );
+
+    await ctx.reply(`❌ Claim for user ${userId} denied and user notified.`);
+    console.log(`[${new Date().toISOString()}] ❌ Admin ${ctx.from.id} denied claim for user ${userId}`);
+  } catch (error) {
+    console.error(`[ERROR in deny_claim] ${error.message}`, error);
+    await ctx.reply("❌ An error occurred while denying claim.");
+  }
+});
+
+/**
+ * Handle User - Select Claim Payment Network
+ */
+bot.action(/^claim_network_(bep20|trc20)$/, async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+
+    const selectedNetwork = ctx.match[1];
+    global.claimData = global.claimData || {};
+    global.usersAwaitingClaimPayment = global.usersAwaitingClaimPayment || {};
+
+    const claim = global.claimData[ctx.from.id];
+    if (!claim || claim.status !== 'approved_waiting_network') {
+      await ctx.reply("❌ No approved claim session found. Please start again from the main menu.");
+      return;
+    }
+
+    claim.paymentNetwork = selectedNetwork;
+    claim.status = 'awaiting_wallet_address';
+    global.claimData[ctx.from.id] = claim;
+    global.usersAwaitingClaimPayment[ctx.from.id] = true;
+
+    await ctx.reply(
+      `✅ Payment network selected: ${selectedNetwork.toUpperCase()}\n\nPlease enter your wallet address.`
+    );
+
+    console.log(`[${new Date().toISOString()}] User ${ctx.from.id} selected payout network ${selectedNetwork}`);
+  } catch (error) {
+    console.error(`[ERROR in claim_network_select] ${error.message}`, error);
+    await ctx.reply("❌ An error occurred. Please try again.");
+  }
+});
+
+/**
+ * Handle Admin - Mark Claim Payment Done
+ */
+bot.action(/^payment_done_(.+)$/, async (ctx) => {
+  try {
+    if (!isAdmin(ctx.from.id)) {
+      await ctx.answerCbQuery("❌ You don't have permission", true);
+      return;
+    }
+
+    const userId = parseInt(ctx.match[1]);
+    await ctx.answerCbQuery("✅ Payment marked as completed");
+
+    global.claimData = global.claimData || {};
+    const claim = global.claimData[userId];
+
+    if (!claim) {
+      await ctx.reply("⚠️ Claim data not found for this user.");
+      return;
+    }
+
+    claim.status = 'payment_completed';
+    claim.paymentCompletedAt = new Date().toLocaleString();
+    claim.paymentCompletedBy = ctx.from.id;
+    global.claimData[userId] = claim;
+
+    await ctx.editMessageText(`
+💸 CLAIM PAYMENT STATUS
+
+👤 User ID: ${userId}
+🆔 Trader ID: ${claim.traderId}
+🌐 Network: ${(claim.paymentNetwork || 'N/A').toUpperCase()}
+🏦 Wallet: ${claim.paymentAddress || 'N/A'}
+
+✅ STATUS: PAYMENT COMPLETED
+🕒 Completed At: ${claim.paymentCompletedAt}
+👑 Completed By Admin: ${ctx.from.id}`);
+
+    await ctx.telegram.sendMessage(
+      userId,
+      "✅ Payment has been completed."
+    );
+
+    await ctx.reply(`✅ Payment completion notification sent to user ${userId}.`);
+    console.log(`[${new Date().toISOString()}] ✅ Admin ${ctx.from.id} marked payment done for user ${userId}`);
+  } catch (error) {
+    console.error(`[ERROR in payment_done] ${error.message}`, error);
+    await ctx.reply("❌ An error occurred while marking payment as done.");
   }
 });
 
