@@ -415,8 +415,8 @@ class InsuranceApp {
             return 'http://localhost:5000';
         }
         
-        // Production - point to your VPS backend
-        return 'http://88.222.212.178:5000';
+        // Production - use domain-based URL for HTTPS/CORS compatibility
+        return 'https://learnwithtanishq.com/api';
     }
 
     /**
