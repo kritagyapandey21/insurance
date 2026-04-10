@@ -317,38 +317,6 @@ router.post("/claim", async (req, res) => {
             });
         }
 
-        // Check if coverage is active
-        if (user.coverageStatus !== "active") {
-            return res.status(409).json({
-                success: false,
-                message: "No active coverage. Coverage status: " + user.coverageStatus
-            });
-        }
-
-        // Check if coverage has expired
-        if (user.coverageEndDate && new Date() > new Date(user.coverageEndDate)) {
-            return res.status(409).json({
-                success: false,
-                message: "Insurance coverage has expired"
-            });
-        }
-
-        // Check for duplicate claim in last 24 hours
-        const existingClaim = await Claim.findOne({
-            traderId: traderId,
-            status: { $ne: "rejected" },
-            createdAt: {
-                $gte: new Date(Date.now() - 86400000) // Last 24 hours
-            }
-        });
-
-        if (existingClaim) {
-            return res.status(409).json({
-                success: false,
-                message: "You already have a pending claim. Please wait for admin review."
-            });
-        }
-
         // Create claim
         const claimId = `CLM_${traderId}_${Date.now()}`;
         const claim = new Claim({
