@@ -361,6 +361,12 @@ class InsuranceApp {
     showSuccessScreen() {
         this.showScreen('success');
 
+        // Enforce duration label at runtime in case stale HTML is cached.
+        const coverageDuration = document.getElementById('coverageDuration');
+        if (coverageDuration) {
+            coverageDuration.textContent = '3 Months';
+        }
+
         // Trigger confetti
         const confetti = new Confetti('confetti');
         confetti.create(100);
