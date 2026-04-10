@@ -11,7 +11,8 @@ const rateLimit = require("express-rate-limit");
 
 // Import routes and models
 const paymentRoutes = require("./routes/payment");
-const User = require("./models/User"); // Load User model early
+const User = require("./models/User");
+const Claim = require("./models/Claim"); // Load Claim model
 
 // Initialize app
 const app = express();
@@ -49,8 +50,10 @@ app.use("/api/", limiter);
 async function initializeDatabase() {
     try {
         await User.initialize();
+        await Claim.initialize();
         await User.checkConnection();
         console.log(`[${new Date().toISOString()}] ✅ PostgreSQL connected successfully`);
+        console.log(`[${new Date().toISOString()}] ✅ Database tables initialized`);
     } catch (err) {
         console.error(`[${new Date().toISOString()}] ❌ PostgreSQL connection error:`, err.message);
         process.exit(1);
