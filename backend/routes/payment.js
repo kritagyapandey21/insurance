@@ -6,6 +6,7 @@
 const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
+const Claim = require("../models/Claim");
 const PaymentService = require("../services/paymentService");
 const { validatePaymentRequest, validatePaymentVerification } = require("../middleware/validation");
 
@@ -284,20 +285,29 @@ router.get("/user-status/:traderId", async (req, res) => {
 
 /**
  * POST /api/claim
- * Submit an insurance claim (placeholder)
+ * Submit an insurance claim
  */
 router.post("/claim", async (req, res) => {
     try {
         await cleanupExpiredCoverageIfNeeded();
-        const { traderId, amount, description } = req.body;
+        const { traderId, amount, description, telegramId } = req.body;
 
-        if (!traderId || !amount) {
+        // Validation
+        if (!traderId || !amount || !description) {
             return res.status(400).json({
                 success: false,
-                message: "Missing required fields: traderId, amount"
+                message: "Missing required fields: traderId, amount, description"
             });
         }
 
+        if (amount <= 0 || amount > 1000000) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid claim amount"
+            });
+        }
+
+        // Find user by trader ID
         const user = await User.findOne({ traderId });
 
         if (!user) {
@@ -307,30 +317,256 @@ router.post("/claim", async (req, res) => {
             });
         }
 
+        // Check if coverage is active
         if (user.coverageStatus !== "active") {
             return res.status(409).json({
                 success: false,
-                message: "No active coverage"
+                message: "No active coverage. Coverage status: " + user.coverageStatus
             });
         }
 
-        // Store claim in database (implement full claim logic in production)
-        console.log(`[Claim Submitted] Trader: ${traderId}, Amount: ${amount}, Description: ${description}`);
+        // Check if coverage has expired
+        if (user.coverageEndDate && new Date() > new Date(user.coverageEndDate)) {
+            return res.status(409).json({
+                success: false,
+                message: "Insurance coverage has expired"
+            });
+        }
+
+        // Check for duplicate claim in last 24 hours
+        const existingClaim = await Claim.findOne({
+            traderId: traderId,
+            status: { $ne: "rejected" },
+            createdAt: {
+                $gte: new Date(Date.now() - 86400000) // Last 24 hours
+            }
+        });
+
+        if (existingClaim) {
+            return res.status(409).json({
+                success: false,
+                message: "You already have a pending claim. Please wait for admin review."
+            });
+        }
+
+        // Create claim
+        const claimId = `CLM_${traderId}_${Date.now()}`;
+        const claim = new Claim({
+            claimId: claimId,
+            traderId: traderId,
+            userId: user.id,
+            telegramId: telegramId || user.telegramId,
+            amount: parseFloat(amount),
+            description: description.trim(),
+            status: "pending_review",
+            createdAt: new Date(),
+            updatedAt: new Date()
+        });
+
+        await claim.save();
+
+        console.log(`[✅ Claim Submitted] Claim ID: ${claimId}, Trader: ${traderId}, Amount: ${amount} USDT`);
 
         res.json({
             success: true,
             message: "Claim submitted successfully. Our team will review it within 14 business days.",
             data: {
-                claimId: `CLM_${traderId}_${Date.now()}`,
-                status: "pending_review"
+                claimId: claimId,
+                status: "pending_review",
+                submittedAt: claim.createdAt,
+                amount: amount
             }
         });
     } catch (error) {
-        console.error(`[Claim Error] ${error.message}`);
+        console.error(`[❌ Claim Error] ${error.message}`, error);
 
         res.status(500).json({
             success: false,
-            message: "Error submitting claim"
+            message: "Error submitting claim",
+            error: process.env.NODE_ENV === "development" ? error.message : undefined
+        });
+    }
+});
+
+/**
+ * GET /api/claims
+ * Get all claims (admin endpoint)
+ */
+router.get("/claims", async (req, res) => {
+    try {
+        const { status, traderId, limit = 50, offset = 0 } = req.query;
+        const filter = {};
+
+        if (status) filter.status = status;
+        if (traderId) filter.traderId = traderId;
+
+        const claims = await Claim.find(filter)
+            .sort({ createdAt: -1 })
+            .limit(parseInt(limit))
+            .skip(parseInt(offset));
+
+        const total = await Claim.countDocuments(filter);
+
+        res.json({
+            success: true,
+            data: claims,
+            pagination: {
+                total,
+                limit: parseInt(limit),
+                offset: parseInt(offset),
+                remaining: Math.max(0, total - parseInt(offset) - parseInt(limit))
+            }
+        });
+    } catch (error) {
+        console.error(`[Claims List Error] ${error.message}`);
+
+        res.status(500).json({
+            success: false,
+            message: "Error fetching claims"
+        });
+    }
+});
+
+/**
+ * GET /api/claims/:claimId
+ * Get specific claim details
+ */
+router.get("/claims/:claimId", async (req, res) => {
+    try {
+        const { claimId } = req.params;
+
+        const claim = await Claim.findOne({ claimId });
+
+        if (!claim) {
+            return res.status(404).json({
+                success: false,
+                message: "Claim not found"
+            });
+        }
+
+        res.json({
+            success: true,
+            data: claim
+        });
+    } catch (error) {
+        console.error(`[Claim Details Error] ${error.message}`);
+
+        res.status(500).json({
+            success: false,
+            message: "Error fetching claim details"
+        });
+    }
+});
+
+/**
+ * PATCH /api/claims/:claimId/approve
+ * Admin approve a claim
+ */
+router.patch("/claims/:claimId/approve", async (req, res) => {
+    try {
+        const { claimId } = req.params;
+        const { payoutAmount, adminNotes } = req.body;
+
+        const claim = await Claim.findOne({ claimId });
+
+        if (!claim) {
+            return res.status(404).json({
+                success: false,
+                message: "Claim not found"
+            });
+        }
+
+        // Update claim status to approved
+        claim.status = "approved";
+        claim.payoutAmount = payoutAmount || claim.amount;
+        claim.adminNotes = adminNotes || "";
+        claim.approvedAt = new Date();
+        claim.updatedAt = new Date();
+
+        await claim.save();
+
+        console.log(`[✅ Claim Approved] ID: ${claimId}, Payout Amount: ${claim.payoutAmount}`);
+
+        res.json({
+            success: true,
+            message: "Claim approved successfully",
+            data: claim
+        });
+    } catch (error) {
+        console.error(`[Claim Approval Error] ${error.message}`);
+
+        res.status(500).json({
+            success: false,
+            message: "Error approving claim"
+        });
+    }
+});
+
+/**
+ * PATCH /api/claims/:claimId/reject
+ * Admin reject a claim
+ */
+router.patch("/claims/:claimId/reject", async (req, res) => {
+    try {
+        const { claimId } = req.params;
+        const { denialReason, adminNotes } = req.body;
+
+        const claim = await Claim.findOne({ claimId });
+
+        if (!claim) {
+            return res.status(404).json({
+                success: false,
+                message: "Claim not found"
+            });
+        }
+
+        // Update claim status to rejected
+        claim.status = "rejected";
+        claim.denialReason = denialReason || "No reason provided";
+        claim.adminNotes = adminNotes || "";
+        claim.resolvedAt = new Date();
+        claim.updatedAt = new Date();
+
+        await claim.save();
+
+        console.log(`[✅ Claim Rejected] ID: ${claimId}, Reason: ${denialReason}`);
+
+        res.json({
+            success: true,
+            message: "Claim rejected successfully",
+            data: claim
+        });
+    } catch (error) {
+        console.error(`[Claim Rejection Error] ${error.message}`);
+
+        res.status(500).json({
+            success: false,
+            message: "Error rejecting claim"
+        });
+    }
+});
+
+/**
+ * GET /api/claims/user/:traderId
+ * Get all claims for a specific user/trader
+ */
+router.get("/claims/user/:traderId", async (req, res) => {
+    try {
+        const { traderId } = req.params;
+
+        const claims = await Claim.find({ traderId })
+            .sort({ createdAt: -1 });
+
+        res.json({
+            success: true,
+            data: claims
+        });
+    } catch (error) {
+        console.error(`[User Claims Error] ${error.message}`);
+
+        res.status(500).json({
+            success: false,
+            message: "Error fetching user claims"
         });
     }
 });

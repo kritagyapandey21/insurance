@@ -1,18 +1,25 @@
 version: '3.8'
 
 services:
-  mongodb:
-    image: mongo:latest
+  postgres:
+    image: postgres:15-alpine
     container_name: crypto-insurance-db
     environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: password123
+      POSTGRES_USER: insurance_user
+      POSTGRES_PASSWORD: StrongPass@123
+      POSTGRES_DB: insurance_db
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
     ports:
-      - "27017:27017"
+      - "5432:5432"
     volumes:
-      - mongodb_data:/data/db
+      - postgres_data:/var/lib/postgresql/data
     networks:
       - insurance-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U insurance_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   backend:
     build: ./backend
@@ -20,12 +27,18 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=5000
-      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/crypto-insurance
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=insurance_user
+      - POSTGRES_PASSWORD=StrongPass@123
+      - POSTGRES_DB=insurance_db
+      - POSTGRES_SSL=false
       - FRONTEND_URL=http://localhost:3000
     ports:
       - "5000:5000"
     depends_on:
-      - mongodb
+      postgres:
+        condition: service_healthy
     networks:
       - insurance-network
     volumes:
@@ -33,7 +46,7 @@ services:
       - /app/node_modules
 
 volumes:
-  mongodb_data:
+  postgres_data:
 
 networks:
   insurance-network:

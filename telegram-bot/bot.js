@@ -725,33 +725,45 @@ bot.action('admin_pending_claims', async (ctx) => {
 
     await ctx.answerCbQuery();
 
-    global.claimData = global.claimData || {};
-    const claimsArray = Object.entries(global.claimData);
+    // Fetch claims from backend API instead of global memory
+    try {
+      const response = await axios.get(`${BACKEND_URL}/api/claims?status=pending_review&limit=20`);
+      
+      if (response.data && response.data.success) {
+        const claims = response.data.data;
+        
+        let claimsList = '';
+        if (claims.length > 0) {
+          claimsList = claims
+            .map((claim, idx) => 
+              `#${idx + 1}
+📌 Claim ID: ${claim.claimId}
+🆔 Trader ID: ${claim.traderId}
+💰 Amount: ${claim.amount} USDT
+📝 Description: ${claim.description.substring(0, 50)}${claim.description.length > 50 ? '...' : ''}
+⏰ Submitted: ${new Date(claim.createdAt).toLocaleDateString()}
+📊 Status: ${claim.status}`)
+            .join('\n\n' + '─'.repeat(40) + '\n\n');
+        } else {
+          claimsList = '✅ No pending claims at the moment.';
+        }
 
-    let claimsList = '';
-    if (claimsArray.length > 0) {
-      claimsList = claimsArray
-        .map(([userId, data], idx) => 
-          `#${idx + 1}
-📌 User ID: ${userId}
-🆔 Trader ID: ${data.traderId}
-💰 Payment Address: ${data.paymentAddress || 'Not submitted yet'}
-⏰ Submitted: ${data.submittedAt}
-📊 Status: ${data.status || 'pending'}`)
-        .join('\n\n' + '─'.repeat(40) + '\n\n');
-    } else {
-      claimsList = '✅ No pending claims at the moment.';
-    }
-
-    const message = `
+        const message = `
 📋 PENDING INSURANCE CLAIMS
 
 ${claimsList}
 
-Total Pending: ${claimsArray.length}`;
+Total Pending: ${claims.length}
 
-    await ctx.reply(message);
-    console.log(`[${new Date().toISOString()}] Admin ${ctx.from.id} viewed pending claims - Total: ${claimsArray.length}`);
+Use /admin to manage claims`;
+
+        await ctx.reply(message);
+        console.log(`[${new Date().toISOString()}] Admin ${ctx.from.id} viewed pending claims - Total: ${claims.length}`);
+      }
+    } catch (apiError) {
+      console.error(`[${new Date().toISOString()}] Error fetching claims from API:`, apiError.message);
+      await ctx.reply("❌ Error fetching claims from database. Please try again.");
+    }
   } catch (error) {
     console.error(`[ERROR in admin_pending_claims] ${error.message}`, error);
     await ctx.reply("❌ An error occurred.");
@@ -989,7 +1001,10 @@ Status: Ready to send (not implemented yet - add database integration)`;
           if (verifyResponse.data && verifyResponse.data.success) {
             const userData = verifyResponse.data.data;
             
+            // STEP 1: Validate user has active coverage
             if (userData.traderId === traderIdClaim && userData.paymentStatus === 'confirmed' && userData.coverageStatus === 'active') {
+              
+              // STEP 2: Store claim data temporarily (waiting for admin approval)
               global.claimData = global.claimData || {};
               global.claimData[ctx.from.id] = {
                 userId: ctx.from.id,
@@ -997,17 +1012,28 @@ Status: Ready to send (not implemented yet - add database integration)`;
                 lastName: ctx.from.last_name || '',
                 username: ctx.from.username || 'N/A',
                 traderId: traderIdClaim,
-                submittedAt: new Date().toLocaleString(),
-                verifiedUser: userData,
-                status: 'pending_admin_review'
+                fullName: userData.fullName,
+                telegramId: ctx.from.id,
+                initialAmount: userData.initialAmount,
+                insuranceFee: userData.insuranceFee,
+                coverageEndDate: userData.coverageEndDate,
+                status: 'pending_admin_review',
+                submittedAt: new Date().toLocaleString()
               };
 
               delete global.usersAwaitingClaimTrader[ctx.from.id];
 
+              // STEP 3: Tell user we're sending to admin
               await ctx.reply(
-                `✅ Trader ID received: ${traderIdClaim}\n\nYour claim will be verified by admin soon.\nClaim in progress...`
+                `✅ Trader ID Received!\n\n` +
+                `🆔 Trader ID: ${traderIdClaim}\n` +
+                `💰 Coverage Amount: $${userData.initialAmount}\n` +
+                `📋 Premium Paid: $${userData.insuranceFee}\n\n` +
+                `⏳ Sending to admin for verification...\n` +
+                `We will notify you once admin reviews your claim.`
               );
 
+              // STEP 4: Send to admin for APPROVAL/REJECTION
               const adminClaimNotification = `
 🔔 NEW CLAIM VERIFICATION REQUEST
 
@@ -1015,38 +1041,48 @@ Status: Ready to send (not implemented yet - add database integration)`;
 • Name: ${userData.fullName}
 • Telegram ID: ${ctx.from.id}
 • Username: @${ctx.from.username || 'N/A'}
+
+💼 Claim Details:
 • Trader ID: ${traderIdClaim}
-
-💰 Policy Details:
+• Coverage Amount: $${userData.initialAmount}
 • Premium Paid: $${userData.insuranceFee}
-• Payment Status: ${userData.paymentStatus}
-• Coverage Status: ${userData.coverageStatus}
+• Payment Status: ✅ ${userData.paymentStatus}
+• Coverage Status: ✅ ${userData.coverageStatus}
+• Coverage Valid Until: ${new Date(userData.coverageEndDate).toLocaleDateString()}
 
-📅 Submitted At: ${global.claimData[ctx.from.id].submittedAt}
+📅 Submitted: ${global.claimData[ctx.from.id].submittedAt}
 
-Please review and choose Allow or Deny.`;
+👉 Please review and decide:
+`;
 
               await ctx.telegram.sendMessage(
                 ADMIN_ID,
                 adminClaimNotification,
                 Markup.inlineKeyboard([
                   [
-                    Markup.button.callback("✅ ALLOW", `approve_claim_${ctx.from.id}`),
-                    Markup.button.callback("❌ DENY", `deny_claim_${ctx.from.id}`)
+                    Markup.button.callback("✅ APPROVE CLAIM", `admin_approve_claim_${ctx.from.id}`),
+                    Markup.button.callback("❌ REJECT CLAIM", `admin_reject_claim_${ctx.from.id}`)
                   ]
                 ])
               );
 
-              console.log(`[${new Date().toISOString()}] Claim submitted for admin review: user ${ctx.from.id}, trader ${traderIdClaim}`);
+              console.log(`[${new Date().toISOString()}] 📋 Claim sent to admin for approval: User ${ctx.from.id}, Trader ${traderIdClaim}`);
+              
             } else {
               delete global.usersAwaitingClaimTrader[ctx.from.id];
               
               const notInsuredMessage = `
 ❌ You are not insured!
 
-The Trader ID you provided does not match your active policy. Please use the Trader ID that was used during your insurance signup.
+The Trader ID you provided does not match your active policy or coverage is inactive.
 
-Thank you!`;
+Details:
+• Your Trader ID: ${userData.traderId}
+• Provided ID: ${traderIdClaim}
+• Payment Status: ${userData.paymentStatus}
+• Coverage Status: ${userData.coverageStatus}
+
+Please use the Trader ID that was used during your insurance signup.`;
 
               await ctx.reply(
                 notInsuredMessage,
@@ -1054,7 +1090,7 @@ Thank you!`;
                   [Markup.button.callback("🔙 Go Back to Main Menu", "insured_go_back")]
                 ])
               );
-              console.log(`[${new Date().toISOString()}] User ${ctx.from.id} claim verification failed - trader mismatch or inactive policy`);
+              console.log(`[${new Date().toISOString()}] ❌ User ${ctx.from.id} claim rejected - validation failed: ${userData.traderId} vs ${traderIdClaim}`);
             }
           } else {
             delete global.usersAwaitingClaimTrader[ctx.from.id];
@@ -1062,11 +1098,11 @@ Thank you!`;
             const notFoundMessage = `
 ❌ You are not insured!
 
-No insurance record found with Trader ID: ${traderIdClaim}
+No insurance record found for your account.
 
 This could mean:
 • You haven't set up insurance yet
-• The Trader ID is incorrect
+• Your insurance has expired
 • Your insurance has expired
 
 Thank you!`;
@@ -1572,6 +1608,306 @@ bot.action(/^payment_done_(.+)$/, async (ctx) => {
   } catch (error) {
     console.error(`[ERROR in payment_done] ${error.message}`, error);
     await ctx.reply("❌ An error occurred while marking payment as done.");
+  }
+});
+
+/**
+ * Handle Admin - APPROVE Insurance Claim (NEW FLOW)
+ * This is part of the new admin-gated claim process
+ */
+bot.action(/^admin_approve_claim_(.+)$/, async (ctx) => {
+  try {
+    if (!isAdmin(ctx.from.id)) {
+      await ctx.answerCbQuery("❌ You don't have permission", true);
+      return;
+    }
+
+    const userId = parseInt(ctx.match[1]);
+    await ctx.answerCbQuery("✅ Claim approved!");
+
+    global.claimData = global.claimData || {};
+    const claimData = global.claimData[userId];
+
+    if (!claimData) {
+      await ctx.reply("⚠️ Claim data not found for this user.");
+      return;
+    }
+
+    try {
+      // STEP 1: Save claim to backend database with 'approved' status
+      const claimPayload = {
+        traderId: claimData.traderId,
+        userId: userId,
+        amount: claimData.initialAmount,
+        description: `Insurance claim for trader ${claimData.traderId}`,
+        status: 'approved',
+        adminNotes: `Approved by admin ${ctx.from.id} on ${new Date().toLocaleString()}`
+      };
+
+      const saveResponse = await axios.post(`${BACKEND_URL}/api/claim`, claimPayload);
+
+      if (saveResponse.data && saveResponse.data.success) {
+        const savedClaim = saveResponse.data.data;
+        
+        // Update local claim data with backend response
+        claimData.status = 'approved';
+        claimData.claimId = savedClaim.claimId;
+        claimData.approvedAt = new Date().toLocaleString();
+        claimData.approvedBy = ctx.from.id;
+        global.claimData[userId] = claimData;
+
+        // STEP 2: Update admin message
+        await ctx.editMessageText(`
+✅ CLAIM APPROVED
+
+👤 User: ${claimData.fullName}
+🆔 Trader ID: ${claimData.traderId}
+💰 Coverage Amount: $${claimData.initialAmount}
+📋 Claim ID: ${savedClaim.claimId}
+
+✅ STATUS: APPROVED
+🕒 Approved: ${claimData.approvedAt}
+👑 Approved By: Admin ${ctx.from.id}
+
+💾 Claim saved to database. Ready for payment.`);
+
+        // STEP 3: Send approval message to user and ask for payment
+        await ctx.telegram.sendMessage(
+          userId,
+          `
+✅ YOUR CLAIM HAS BEEN APPROVED!
+
+🎉 Great news! Your insurance claim has been verified and approved by our admin.
+
+📊 Claim Details:
+• Trader ID: ${claimData.traderId}
+• Coverage Amount: $${claimData.initialAmount}
+• Claim ID: ${savedClaim.claimId}
+
+💳 NEXT STEP: PAYMENT
+
+Please select your preferred payment network for the payout:`,
+          Markup.inlineKeyboard([
+            [
+              Markup.button.callback("🔶 BEP20 (BSC)", "claim_network_bep20"),
+              Markup.button.callback("🔴 TRC20 (Tron)", "claim_network_trc20")
+            ]
+          ])
+        );
+
+        await ctx.reply(`✅ Claim approved and saved to database! Payment network selection sent to user ${userId}.`);
+        console.log(`[${new Date().toISOString()}] ✅ Admin ${ctx.from.id} APPROVED claim for user ${userId} - Claim ID: ${savedClaim.claimId}`);
+
+      } else {
+        throw new Error('Failed to save claim to backend');
+      }
+    } catch (apiError) {
+      console.error(`[ERROR saving claim to backend] ${apiError.message}`);
+      
+      // Still mark as approved locally even if backend fails
+      claimData.status = 'approved';
+      claimData.approvedAt = new Date().toLocaleString();
+      claimData.approvedBy = ctx.from.id;
+      global.claimData[userId] = claimData;
+
+      await ctx.editMessageText(`
+✅ CLAIM APPROVED
+
+👤 User: ${claimData.fullName}
+🆔 Trader ID: ${claimData.traderId}
+💰 Coverage Amount: $${claimData.initialAmount}
+
+✅ STATUS: APPROVED (Offline)
+🕒 Approved: ${claimData.approvedAt}
+👑 Approved By: Admin ${ctx.from.id}
+
+⚠️ Note: Database save failed, stored locally.`);
+
+      // Still send payment request to user
+      await ctx.telegram.sendMessage(
+        userId,
+        `
+✅ YOUR CLAIM HAS BEEN APPROVED!
+
+🎉 Great news! Your insurance claim has been verified and approved by our admin.
+
+📊 Claim Details:
+• Trader ID: ${claimData.traderId}
+• Coverage Amount: $${claimData.initialAmount}
+
+💳 NEXT STEP: PAYMENT
+
+Please select your preferred payment network for the payout:`,
+        Markup.inlineKeyboard([
+          [
+            Markup.button.callback("🔶 BEP20 (BSC)", "claim_network_bep20"),
+            Markup.button.callback("🔴 TRC20 (Tron)", "claim_network_trc20")
+          ]
+        ])
+      );
+
+      await ctx.reply(`⚠️ Claim approved but backend save failed. User sent payment network selection. Check server logs.`);
+    }
+
+  } catch (error) {
+    console.error(`[ERROR in admin_approve_claim] ${error.message}`, error);
+    await ctx.reply("❌ An error occurred while approving the claim.");
+  }
+});
+
+/**
+ * Handle Admin - REJECT Insurance Claim (NEW FLOW)
+ * This is part of the new admin-gated claim process
+ */
+bot.action(/^admin_reject_claim_(.+)$/, async (ctx) => {
+  try {
+    if (!isAdmin(ctx.from.id)) {
+      await ctx.answerCbQuery("❌ You don't have permission", true);
+      return;
+    }
+
+    const userId = parseInt(ctx.match[1]);
+    await ctx.answerCbQuery("❌ Claim rejected!");
+
+    global.claimData = global.claimData || {};
+    const claimData = global.claimData[userId];
+
+    if (!claimData) {
+      await ctx.reply("⚠️ Claim data not found for this user.");
+      return;
+    }
+
+    try {
+      // STEP 1: Save REJECTED claim to backend database
+      const claimPayload = {
+        traderId: claimData.traderId,
+        userId: userId,
+        amount: claimData.initialAmount,
+        description: `Insurance claim for trader ${claimData.traderId}`,
+        status: 'rejected',
+        adminNotes: `Rejected by admin ${ctx.from.id} on ${new Date().toLocaleString()}`,
+        denialReason: 'Claim verification failed during admin review'
+      };
+
+      const saveResponse = await axios.post(`${BACKEND_URL}/api/claim`, claimPayload);
+
+      if (saveResponse.data && saveResponse.data.success) {
+        const savedClaim = saveResponse.data.data;
+        
+        claimData.status = 'rejected';
+        claimData.claimId = savedClaim.claimId;
+        claimData.rejectedAt = new Date().toLocaleString();
+        claimData.rejectedBy = ctx.from.id;
+        global.claimData[userId] = claimData;
+
+        // STEP 2: Update admin message
+        await ctx.editMessageText(`
+❌ CLAIM REJECTED
+
+👤 User: ${claimData.fullName}
+🆔 Trader ID: ${claimData.traderId}
+💰 Coverage Amount: $${claimData.initialAmount}
+📋 Claim ID: ${savedClaim.claimId}
+
+❌ STATUS: REJECTED
+🕒 Rejected: ${claimData.rejectedAt}
+👑 Rejected By: Admin ${ctx.from.id}
+
+📝 Reason: Claim verification failed during admin review`);
+
+        // STEP 3: Send rejection message to user
+        await ctx.telegram.sendMessage(
+          userId,
+          `
+❌ YOUR CLAIM HAS BEEN REJECTED
+
+Unfortunately, your insurance claim could not be approved at this time.
+
+📊 Claim Details:
+• Trader ID: ${claimData.traderId}
+• Coverage Amount: $${claimData.initialAmount}
+• Claim ID: ${savedClaim.claimId}
+
+📝 Reason for Rejection:
+Claim verification failed during admin review. This may be due to:
+1. Account not created through our referral link
+2. Account still has balance remaining
+3. Violation of insurance terms and conditions
+4. Unverified account documentation
+
+🆘 WHAT TO DO NEXT:
+
+If you believe this is an error, please:
+1. Contact support @Pocketshieldsupport
+2. Provide your Trader ID and Claim ID
+3. Include any relevant documentation or proof
+
+We'll review your appeal and get back to you shortly.
+
+Thank you for using PocketShield Insurance!`,
+          Markup.inlineKeyboard([
+            [Markup.button.callback("🔙 Go Back to Main Menu", "insured_go_back")]
+          ])
+        );
+
+        await ctx.reply(`❌ Claim rejected and notification sent to user ${userId}.`);
+        console.log(`[${new Date().toISOString()}] ❌ Admin ${ctx.from.id} REJECTED claim for user ${userId} - Claim ID: ${savedClaim.claimId}`);
+
+      } else {
+        throw new Error('Failed to save rejected claim to backend');
+      }
+    } catch (apiError) {
+      console.error(`[ERROR saving rejected claim to backend] ${apiError.message}`);
+      
+      // Still mark as rejected locally even if backend fails
+      claimData.status = 'rejected';
+      claimData.rejectedAt = new Date().toLocaleString();
+      claimData.rejectedBy = ctx.from.id;
+      global.claimData[userId] = claimData;
+
+      await ctx.editMessageText(`
+❌ CLAIM REJECTED
+
+👤 User: ${claimData.fullName}
+🆔 Trader ID: ${claimData.traderId}
+💰 Coverage Amount: $${claimData.initialAmount}
+
+❌ STATUS: REJECTED (Offline)
+🕒 Rejected: ${claimData.rejectedAt}
+👑 Rejected By: Admin ${ctx.from.id}
+
+⚠️ Note: Database save failed, stored locally.`);
+
+      // Still send rejection to user
+      await ctx.telegram.sendMessage(
+        userId,
+        `
+❌ YOUR CLAIM HAS BEEN REJECTED
+
+Unfortunately, your insurance claim could not be approved at this time.
+
+📊 Claim Details:
+• Trader ID: ${claimData.traderId}
+• Coverage Amount: $${claimData.initialAmount}
+
+📝 Reason for Rejection:
+Claim verification failed during admin review.
+
+🆘 WHAT TO DO NEXT:
+Contact support @Pocketshieldsupport with your Trader ID for assistance.
+
+Thank you for using PocketShield Insurance!`,
+        Markup.inlineKeyboard([
+          [Markup.button.callback("🔙 Go Back to Main Menu", "insured_go_back")]
+        ])
+      );
+
+      await ctx.reply(`⚠️ Claim rejected but backend save failed. User sent rejection message. Check server logs.`);
+    }
+
+  } catch (error) {
+    console.error(`[ERROR in admin_reject_claim] ${error.message}`, error);
+    await ctx.reply("❌ An error occurred while rejecting the claim.");
   }
 });
 
