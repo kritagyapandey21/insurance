@@ -415,8 +415,8 @@ class InsuranceApp {
             return 'http://localhost:5000';
         }
         
-        // Production - use domain-based URL for HTTPS/CORS compatibility
-        return 'https://learnwithtanishq.com/api';
+        // Production - base domain only; endpoint methods already prepend /api
+        return 'https://learnwithtanishq.com';
     }
 
     /**
