@@ -400,7 +400,7 @@ bot.action('insured_check_status', async (ctx) => {
 💰 Insurance Amount:
 • Initial Deposit: $${userData.initialAmount} USDT
 • Premium Paid: $${userData.insuranceFee} USDT (10%)
-• Coverage Amount: $${userData.initialAmount} USDT (100% coverage)
+• Coverage Amount: $${userData.initialAmount * 0.4} USDT (40% coverage)
 
 📅 Coverage Period:
 • Activated: ${activationDate}
@@ -408,7 +408,7 @@ bot.action('insured_check_status', async (ctx) => {
 • Duration: 3 months
 
 📋 Coverage Terms:
-✓ Covers total account loss only
+✓ Covers 40% of account loss only
 ✓ Before any withdrawals
 ✓ Account must be verified via Pocket Option
 ✓ Created using referral link
@@ -1024,7 +1024,7 @@ Status: Ready to send (not implemented yet - add database integration)`;
             await ctx.reply(
               `✅ Claim Submitted!\n\n` +
               `🆔 Trader ID: ${traderIdClaim}\n` +
-              `💰 Coverage Amount: $${userData.initialAmount}\n` +
+              `💰 Coverage Amount: $${userData.initialAmount * 0.4} USDT (40%)\n` +
               `📋 Premium Paid: $${userData.insuranceFee}\n\n` +
               `⏳ Sending to admin for review...\n` +
               `You will be notified once admin decides.`
@@ -1615,7 +1615,7 @@ bot.action(/^admin_approve_claim_(.+)$/, async (ctx) => {
 
 👤 User: ${claimData.fullName}
 🆔 Trader ID: ${claimData.traderId}
-💰 Coverage Amount: $${claimData.initialAmount}
+💰 Coverage Amount: $${claimData.initialAmount * 0.4} USDT (40%)
 📋 Claim ID: ${savedClaim.claimId}
 
 ✅ STATUS: APPROVED
@@ -1634,7 +1634,7 @@ bot.action(/^admin_approve_claim_(.+)$/, async (ctx) => {
 
 📊 Claim Details:
 • Trader ID: ${claimData.traderId}
-• Coverage Amount: $${claimData.initialAmount}
+• Coverage Amount: $${claimData.initialAmount * 0.4} (40%)
 • Claim ID: ${savedClaim.claimId}
 
 💳 NEXT STEP: PAYMENT
@@ -1676,7 +1676,7 @@ Please select your preferred payment network for the payout:`,
 
 👤 User: ${claimData.fullName}
 🆔 Trader ID: ${claimData.traderId}
-💰 Coverage Amount: $${claimData.initialAmount}
+💰 Coverage Amount: $${claimData.initialAmount * 0.4} (40%)
 
 ✅ STATUS: APPROVED (Local Memory)
 🕒 Approved: ${claimData.approvedAt}
@@ -1698,7 +1698,7 @@ Please select your preferred payment network for the payout:`,
 
 📊 Claim Details:
 • Trader ID: ${claimData.traderId}
-• Coverage Amount: $${claimData.initialAmount}
+• Coverage Amount: $${claimData.initialAmount * 0.4} (40%)
 
 💳 NEXT STEP: PAYMENT
 
@@ -1775,7 +1775,7 @@ bot.action(/^admin_reject_claim_(.+)$/, async (ctx) => {
 
 👤 User: ${claimData.fullName}
 🆔 Trader ID: ${claimData.traderId}
-💰 Coverage Amount: $${claimData.initialAmount}
+💰 Coverage Amount: $${claimData.initialAmount * 0.4} (40%)
 📋 Claim ID: ${savedClaim.claimId}
 
 ❌ STATUS: REJECTED
@@ -1794,7 +1794,7 @@ Unfortunately, your insurance claim could not be approved at this time.
 
 📊 Claim Details:
 • Trader ID: ${claimData.traderId}
-• Coverage Amount: $${claimData.initialAmount}
+• Coverage Amount: $${claimData.initialAmount * 0.4} (40%)
 • Claim ID: ${savedClaim.claimId}
 
 📝 Reason for Rejection:
@@ -1847,7 +1847,7 @@ Thank you for using PocketShield Insurance!`,
 
 👤 User: ${claimData.fullName}
 🆔 Trader ID: ${claimData.traderId}
-💰 Coverage Amount: $${claimData.initialAmount}
+💰 Coverage Amount: $${claimData.initialAmount * 0.4} (40%)
 
 ❌ STATUS: REJECTED (Local Memory)
 🕒 Rejected: ${claimData.rejectedAt}
@@ -1869,7 +1869,7 @@ Unfortunately, your insurance claim could not be approved at this time.
 
 📊 Claim Details:
 • Trader ID: ${claimData.traderId}
-• Coverage Amount: $${claimData.initialAmount}
+• Coverage Amount: $${claimData.initialAmount * 0.4} (40%)
 
 📝 Reason for Rejection:
 Claim verification failed during admin review.
