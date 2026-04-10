@@ -1551,7 +1551,26 @@ bot.action(/^payment_done_(.+)$/, async (ctx) => {
       "✅ Payment has been completed."
     );
 
-    await ctx.reply(`✅ Payment completion notification sent to user ${userId}.`);
+    // DELETE USER DATA FROM DATABASE AFTER PAYMENT COMPLETION
+    try {
+      const traderId = claim.traderId;
+      
+      // Delete from claims table
+      await pool.query('DELETE FROM claims WHERE "traderId" = $1', [traderId]);
+      
+      // Delete from users table
+      await pool.query('DELETE FROM users WHERE "traderId" = $1', [traderId]);
+      
+      // Clear from memory
+      delete global.claimData[userId];
+      
+      console.log(`[${new Date().toISOString()}] 🗑️ User data deleted for Trader ID: ${traderId} after payment completion`);
+    } catch (dbError) {
+      console.error(`[ERROR deleting user data] ${dbError.message}`);
+      await ctx.reply(`⚠️ Payment marked complete but error deleting user data: ${dbError.message}`);
+    }
+
+    await ctx.reply(`✅ Payment completion notification sent to user ${userId}. User data deleted from database.`);
     console.log(`[${new Date().toISOString()}] ✅ Admin ${ctx.from.id} marked payment done for user ${userId}`);
   } catch (error) {
     console.error(`[ERROR in payment_done] ${error.message}`, error);
