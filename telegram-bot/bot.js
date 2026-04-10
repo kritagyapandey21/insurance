@@ -1585,14 +1585,19 @@ bot.action(/^admin_approve_claim_(.+)$/, async (ctx) => {
       // STEP 1: Save claim to backend database with 'approved' status
       const claimPayload = {
         traderId: claimData.traderId,
-        userId: userId,
         amount: claimData.initialAmount,
         description: `Insurance claim for trader ${claimData.traderId}`,
-        status: 'approved',
-        adminNotes: `Approved by admin ${ctx.from.id} on ${new Date().toLocaleString()}`
+        telegramId: userId
       };
 
-      const saveResponse = await axios.post(`${BACKEND_URL}/api/claim`, claimPayload);
+      console.log(`[${new Date().toISOString()}] 📤 Attempting to save claim to backend: ${BACKEND_URL}/api/claim`);
+      console.log(`[${new Date().toISOString()}] Payload:`, claimPayload);
+
+      const saveResponse = await axios.post(`${BACKEND_URL}/api/claim`, claimPayload, {
+        timeout: 10000
+      });
+
+      console.log(`[${new Date().toISOString()}] ✅ Backend response:`, saveResponse.data);
 
       if (saveResponse.data && saveResponse.data.success) {
         const savedClaim = saveResponse.data.data;
@@ -1651,6 +1656,14 @@ Please select your preferred payment network for the payout:`,
       }
     } catch (apiError) {
       console.error(`[ERROR saving claim to backend] ${apiError.message}`);
+      console.error(`[Backend Error Details]`, {
+        url: `${BACKEND_URL}/api/claim`,
+        status: apiError.response?.status,
+        statusText: apiError.response?.statusText,
+        data: apiError.response?.data,
+        code: apiError.code,
+        message: apiError.message
+      });
       
       // Still mark as approved locally even if backend fails
       claimData.status = 'approved';
@@ -1659,17 +1672,21 @@ Please select your preferred payment network for the payout:`,
       global.claimData[userId] = claimData;
 
       await ctx.editMessageText(`
-✅ CLAIM APPROVED
+✅ CLAIM APPROVED (LOCAL SAVE ONLY)
 
 👤 User: ${claimData.fullName}
 🆔 Trader ID: ${claimData.traderId}
 💰 Coverage Amount: $${claimData.initialAmount}
 
-✅ STATUS: APPROVED (Offline)
+✅ STATUS: APPROVED (Local Memory)
 🕒 Approved: ${claimData.approvedAt}
 👑 Approved By: Admin ${ctx.from.id}
 
-⚠️ Note: Database save failed, stored locally.`);
+⚠️ BACKEND ISSUE: Database save failed
+🔧 Error: ${apiError.response?.status} ${apiError.response?.statusText || apiError.code}
+📝 Details: ${apiError.response?.data?.message || apiError.message}
+
+🚨 ACTION NEEDED: Check backend server is running at ${BACKEND_URL}`);
 
       // Still send payment request to user
       await ctx.telegram.sendMessage(
@@ -1729,15 +1746,19 @@ bot.action(/^admin_reject_claim_(.+)$/, async (ctx) => {
       // STEP 1: Save REJECTED claim to backend database
       const claimPayload = {
         traderId: claimData.traderId,
-        userId: userId,
         amount: claimData.initialAmount,
         description: `Insurance claim for trader ${claimData.traderId}`,
-        status: 'rejected',
-        adminNotes: `Rejected by admin ${ctx.from.id} on ${new Date().toLocaleString()}`,
-        denialReason: 'Claim verification failed during admin review'
+        telegramId: userId
       };
 
-      const saveResponse = await axios.post(`${BACKEND_URL}/api/claim`, claimPayload);
+      console.log(`[${new Date().toISOString()}] 📤 Attempting to save REJECTED claim to backend: ${BACKEND_URL}/api/claim`);
+      console.log(`[${new Date().toISOString()}] Payload:`, claimPayload);
+
+      const saveResponse = await axios.post(`${BACKEND_URL}/api/claim`, claimPayload, {
+        timeout: 10000
+      });
+
+      console.log(`[${new Date().toISOString()}] ✅ Backend response:`, saveResponse.data);
 
       if (saveResponse.data && saveResponse.data.success) {
         const savedClaim = saveResponse.data.data;
@@ -1806,6 +1827,14 @@ Thank you for using PocketShield Insurance!`,
       }
     } catch (apiError) {
       console.error(`[ERROR saving rejected claim to backend] ${apiError.message}`);
+      console.error(`[Backend Error Details]`, {
+        url: `${BACKEND_URL}/api/claim`,
+        status: apiError.response?.status,
+        statusText: apiError.response?.statusText,
+        data: apiError.response?.data,
+        code: apiError.code,
+        message: apiError.message
+      });
       
       // Still mark as rejected locally even if backend fails
       claimData.status = 'rejected';
@@ -1814,17 +1843,21 @@ Thank you for using PocketShield Insurance!`,
       global.claimData[userId] = claimData;
 
       await ctx.editMessageText(`
-❌ CLAIM REJECTED
+❌ CLAIM REJECTED (LOCAL SAVE ONLY)
 
 👤 User: ${claimData.fullName}
 🆔 Trader ID: ${claimData.traderId}
 💰 Coverage Amount: $${claimData.initialAmount}
 
-❌ STATUS: REJECTED (Offline)
+❌ STATUS: REJECTED (Local Memory)
 🕒 Rejected: ${claimData.rejectedAt}
 👑 Rejected By: Admin ${ctx.from.id}
 
-⚠️ Note: Database save failed, stored locally.`);
+⚠️ BACKEND ISSUE: Database save failed
+🔧 Error: ${apiError.response?.status} ${apiError.response?.statusText || apiError.code}
+📝 Details: ${apiError.response?.data?.message || apiError.message}
+
+🚨 ACTION NEEDED: Check backend server is running at ${BACKEND_URL}`);
 
       // Still send rejection to user
       await ctx.telegram.sendMessage(
