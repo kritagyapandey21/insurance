@@ -168,16 +168,18 @@ What would you like to do?`;
     } else {
       // REGULAR USER INTERFACE
       const welcomeMessage = `
-🛡️ Welcome to PocketShield Insurance
+    🛡️ Welcome to PocketShield Insurance.
 
-We provide secure coverage for your trading funds.
+    Join Our Channel for updates and latest news: https://t.me/pocket_shield
 
-✨ Why Choose Us?
-• Transparent & decentralized claims
-• 10% flat insurance fee
-• 24/7 customer support
+    We provide secure coverage for your trading funds.
 
-Get insured in minutes today!
+    ✨ Why Choose Us?
+    * Transparent & decentralized claims
+    * 10% flat insurance fee
+    * 24/7 customer support
+
+    Get insured in minutes today!
       `.trim();
 
       // Send welcome message
@@ -522,16 +524,18 @@ bot.action('insured_go_back', async (ctx) => {
     await ctx.answerCbQuery();
 
     const welcomeMessage = `
-🛡️ Welcome to PocketShield Insurance
+  🛡️ Welcome to PocketShield Insurance.
 
-We provide secure coverage for your trading funds.
+  Join Our Channel for updates and latest news: https://t.me/pocket_shield
 
-✨ Why Choose Us?
-• Transparent & decentralized claims
-• 10% flat insurance fee
-• 24/7 customer support
+  We provide secure coverage for your trading funds.
 
-Get insured in minutes today!
+  ✨ Why Choose Us?
+  * Transparent & decentralized claims
+  * 10% flat insurance fee
+  * 24/7 customer support
+
+  Get insured in minutes today!
     `.trim();
 
     // Send welcome message
