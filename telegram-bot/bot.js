@@ -1560,17 +1560,17 @@ bot.action(/^payment_done_(.+)$/, async (ctx) => {
     // DELETE USER DATA FROM DATABASE AFTER PAYMENT COMPLETION
     try {
       const traderId = claim.traderId;
-      
-      // Delete from claims table
-      await pool.query('DELETE FROM claims WHERE "traderId" = $1', [traderId]);
-      
-      // Delete from users table
-      await pool.query('DELETE FROM users WHERE "traderId" = $1', [traderId]);
+
+      const cleanupResponse = await axios.post(`${BACKEND_URL}/api/claims/complete-payout`, {
+        traderId: traderId
+      }, {
+        timeout: 10000
+      });
       
       // Clear from memory
       delete global.claimData[userId];
       
-      console.log(`[${new Date().toISOString()}] 🗑️ User data deleted for Trader ID: ${traderId} after payment completion`);
+      console.log(`[${new Date().toISOString()}] 🗑️ User data cleanup complete for Trader ID: ${traderId} after payment completion`, cleanupResponse.data?.data || {});
     } catch (dbError) {
       console.error(`[ERROR deleting user data] ${dbError.message}`);
       await ctx.reply(`⚠️ Payment marked complete but error deleting user data: ${dbError.message}`);

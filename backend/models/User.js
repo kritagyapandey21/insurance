@@ -302,6 +302,12 @@ class User {
         return result.rowCount || 0;
     }
 
+    static async deleteMany(filter = {}) {
+        const { whereSql, values } = buildWhereClause(filter);
+        const result = await pool.query(`DELETE FROM users ${whereSql}`, values);
+        return { deletedCount: result.rowCount || 0 };
+    }
+
     async save() {
         const data = {
             full_name: this.fullName,

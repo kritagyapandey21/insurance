@@ -801,4 +801,55 @@ router.post("/verify-trader-affiliate", async (req, res) => {
     }
 });
 
+/**
+ * POST /api/claims/complete-payout
+ * Finalize claim payout and remove user insurance records
+ * Body: { traderId }
+ */
+router.post("/claims/complete-payout", async (req, res) => {
+    try {
+        const traderId = req.body?.traderId ? String(req.body.traderId).trim() : "";
+
+        if (!traderId) {
+            return res.status(400).json({
+                success: false,
+                message: "Trader ID is required"
+            });
+        }
+
+        const existingUser = await User.findOne({ traderId });
+        if (!existingUser) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found for provided trader ID"
+            });
+        }
+
+        const claimsBeforeDelete = await Claim.countDocuments({ traderId });
+        const userDeleteResult = await User.deleteMany({ traderId });
+
+        // claims table has FK ON DELETE CASCADE via trader_id, so related claims are removed with user.
+        const claimsAfterDelete = await Claim.countDocuments({ traderId });
+
+        console.log(`[Payout Cleanup] Trader ${traderId}: usersDeleted=${userDeleteResult.deletedCount}, claimsBefore=${claimsBeforeDelete}, claimsAfter=${claimsAfterDelete}`);
+
+        return res.json({
+            success: true,
+            message: "Payout finalized and records cleaned up",
+            data: {
+                traderId,
+                usersDeleted: userDeleteResult.deletedCount,
+                claimsDeleted: Math.max(0, claimsBeforeDelete - claimsAfterDelete)
+            }
+        });
+    } catch (error) {
+        console.error(`[Payout Cleanup Error] ${error.message}`);
+        return res.status(500).json({
+            success: false,
+            message: "Error finalizing payout cleanup",
+            error: process.env.NODE_ENV === "development" ? error.message : undefined
+        });
+    }
+});
+
 module.exports = router;
