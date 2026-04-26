@@ -1223,7 +1223,7 @@ Congratulations! Your account has been verified by our admin.
 • Trader ID: ${userData.traderId}
 • Status: ✅ VERIFIED
 
-➡️You can Join this Channel for Sureshot Signals: https://t.me/+mTusjfwTKY02NWRl
+➡️You can Join this Channel for Sureshot Signals: https://t.me/+RT8CpklYJX8zYTE1
 
 🎉 Next Steps:
 Now you can access the insurance mini app to complete your payment and get insured!
